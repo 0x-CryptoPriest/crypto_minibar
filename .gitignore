@@ -1,0 +1,4 @@
+.build/
+CryptoMinbar.app/
+.DS_Store
+*.xcuserdata/
