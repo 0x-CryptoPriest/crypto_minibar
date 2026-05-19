@@ -6,21 +6,27 @@ struct CoinInfo: Codable, Equatable, Identifiable, Sendable {
     let name: String
     let nameid: String
     let rank: Int
+
+    var symbolName: String {
+        switch symbol {
+        case "BTC": return "bitcoinsign.circle.fill"
+        case "LINK": return "link.circle.fill"
+        default:
+            let letter = symbol.prefix(1).lowercased()
+            return "\(letter).circle.fill"
+        }
+    }
 }
 
 extension CoinInfo {
-    static let bitcoin = CoinInfo(id: "BTC-USD", symbol: "BTC", name: "Bitcoin", nameid: "bitcoin", rank: 1)
+    static let bitcoin = CoinInfo(id: "BTCUSDT", symbol: "BTC", name: "Bitcoin", nameid: "bitcoin", rank: 1)
 
-    static let yahooCryptoUSD: [CoinInfo] = [
+    static let allTickSymbols: [CoinInfo] = [
         .bitcoin,
-        CoinInfo(id: "ETH-USD", symbol: "ETH", name: "Ethereum", nameid: "ethereum", rank: 2),
-        CoinInfo(id: "XRP-USD", symbol: "XRP", name: "XRP", nameid: "xrp", rank: 3),
-        CoinInfo(id: "BNB-USD", symbol: "BNB", name: "BNB", nameid: "bnb", rank: 4),
-        CoinInfo(id: "SOL-USD", symbol: "SOL", name: "Solana", nameid: "solana", rank: 5),
-        CoinInfo(id: "DOGE-USD", symbol: "DOGE", name: "Dogecoin", nameid: "dogecoin", rank: 6),
-        CoinInfo(id: "ADA-USD", symbol: "ADA", name: "Cardano", nameid: "cardano", rank: 7),
-        CoinInfo(id: "TRX-USD", symbol: "TRX", name: "TRON", nameid: "tron", rank: 8),
-        CoinInfo(id: "AVAX-USD", symbol: "AVAX", name: "Avalanche", nameid: "avalanche", rank: 9),
-        CoinInfo(id: "LINK-USD", symbol: "LINK", name: "Chainlink", nameid: "chainlink", rank: 10)
+        CoinInfo(id: "ETHUSDT", symbol: "ETH", name: "Ethereum", nameid: "ethereum", rank: 2),
+        CoinInfo(id: "XRPUSDT", symbol: "XRP", name: "XRP", nameid: "xrp", rank: 3),
+        CoinInfo(id: "BNBUSDT", symbol: "BNB", name: "BNB", nameid: "bnb", rank: 4),
+        CoinInfo(id: "SOLUSDT", symbol: "SOL", name: "Solana", nameid: "solana", rank: 5),
+        CoinInfo(id: "DOGEUSDT", symbol: "DOGE", name: "Dogecoin", nameid: "dogecoin", rank: 6),
     ]
 }

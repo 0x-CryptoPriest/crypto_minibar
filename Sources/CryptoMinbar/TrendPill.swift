@@ -22,6 +22,6 @@ struct TrendPill: View {
     private var formattedValue: String {
         let number = NSDecimalNumber(decimal: value)
         let formatted = DisplayFormatters.percent.string(from: number) ?? "--"
-        return "\(formatted)%"
+        return formatted
     }
 }

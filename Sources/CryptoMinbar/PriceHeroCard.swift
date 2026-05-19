@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct PriceHeroCard: View {
@@ -5,22 +6,32 @@ struct PriceHeroCard: View {
     let selectedCoin: CoinInfo
     let statusTitle: String
     let isRefreshing: Bool
+    let copyPrice: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: CryptoMinbarDesign.cardSpacing) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label(selectedCoin.name, systemImage: "bitcoinsign.circle.fill")
+                    Label(selectedCoin.name, systemImage: selectedCoin.symbolName)
                         .font(.headline)
                         .labelStyle(.titleAndIcon)
                         .symbolRenderingMode(.hierarchical)
 
-                    Text("Yahoo Finance · \(selectedCoin.id)")
+                    Text("AllTick WebSocket · \(selectedCoin.id)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
+
+                Button(action: copyPrice) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy price to clipboard")
+                .opacity(ticker != nil ? 1 : 0.3)
 
                 RefreshBadge(isRefreshing: isRefreshing)
             }
@@ -32,8 +43,8 @@ struct PriceHeroCard: View {
                 .minimumScaleFactor(0.72)
                 .accessibilityLabel("\(selectedCoin.name) price \(statusTitle)")
 
-            if let ticker, let change = ticker.percentChange24h {
-                TrendPill(value: change, label: "24h")
+            if let ticker, let change = ticker.percentChange5m {
+                TrendPill(value: change, label: "5min")
             } else {
                 Text("Waiting for the next quote")
                     .font(.callout)
@@ -41,17 +52,15 @@ struct PriceHeroCard: View {
             }
         }
         .padding(CryptoMinbarDesign.contentPadding)
+        .frame(minHeight: 148, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: CryptoMinbarDesign.cornerRadius)
-                .fill(.regularMaterial)
-                .overlay(alignment: .topTrailing) {
-                    Circle()
-                        .fill(CryptoMinbarDesign.accent.gradient)
-                        .frame(width: 96, height: 96)
-                        .blur(radius: 32)
-                        .opacity(0.35)
-                        .offset(x: 18, y: -32)
-                }
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: CryptoMinbarDesign.cornerRadius)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                )
         }
         .clipShape(RoundedRectangle(cornerRadius: CryptoMinbarDesign.cornerRadius))
     }

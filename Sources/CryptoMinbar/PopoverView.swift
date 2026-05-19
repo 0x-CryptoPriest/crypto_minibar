@@ -9,8 +9,13 @@ struct PopoverView: View {
                 ticker: viewModel.ticker,
                 selectedCoin: viewModel.selectedCoin,
                 statusTitle: viewModel.statusTitle,
-                isRefreshing: viewModel.isRefreshing
+                isRefreshing: viewModel.isRefreshing,
+                copyPrice: copyPrice
             )
+
+            if viewModel.isShowingAPISettings {
+                APIKeySettingsCard(viewModel: viewModel)
+            }
 
             CoinSelectorCard(viewModel: viewModel)
 
@@ -19,25 +24,31 @@ struct PopoverView: View {
                 lastUpdated: viewModel.lastUpdated
             )
 
+            AlertsCard(viewModel: viewModel)
+
             PopoverActionBar(
                 errorMessage: viewModel.errorMessage,
+                isShowingSettings: viewModel.isShowingAPISettings,
                 refresh: refreshNow,
+                toggleSettings: toggleSettings,
                 quit: quit
             )
         }
         .padding(CryptoMinbarDesign.contentPadding)
-        .frame(width: CryptoMinbarDesign.panelWidth)
-        .background {
-            LinearGradient(
-                colors: [Color(nsColor: .windowBackgroundColor), Color(nsColor: .controlBackgroundColor)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        .frame(width: CryptoMinbarDesign.panelWidth, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func copyPrice() {
+        viewModel.copyPriceToClipboard()
     }
 
     private func refreshNow() {
         Task { await viewModel.refreshNow() }
+    }
+
+    private func toggleSettings() {
+        viewModel.toggleAPISettings()
     }
 
     private func quit() {

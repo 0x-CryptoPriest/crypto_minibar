@@ -5,50 +5,31 @@ import Testing
 @Suite("Ticker view model")
 struct TickerViewModelTests {
     @MainActor
-    @Test("each successful refresh updates the displayed price")
-    func eachSuccessfulRefreshUpdatesDisplayedPrice() async {
-        let provider = SequenceProvider(tickers: [
-            Self.ticker(price: "100.00"),
-            Self.ticker(price: "101.25")
-        ])
-        let viewModel = TickerViewModel(provider: provider)
+    @Test("starts with BTC placeholder before websocket tick")
+    func startsWithBTCPlaceholder() {
+        let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider())
 
-        await viewModel.refreshNow()
-        #expect(viewModel.statusTitle == "BTC $100.00")
-
-        await viewModel.refreshNow()
-        #expect(viewModel.statusTitle == "BTC $101.25")
-    }
-
-    private static func ticker(price: String) -> BTCTicker {
-        BTCTicker(
-            id: "90",
-            symbol: "BTC",
-            name: "Bitcoin",
-            nameid: "bitcoin",
-            rank: 1,
-            priceUSD: Decimal(string: price)!,
-            percentChange1h: nil,
-            percentChange24h: nil,
-            percentChange4h: nil,
-            marketCapUSD: nil,
-            volume24: nil
-        )
+        #expect(viewModel.statusTitle == "BTC --")
     }
 }
 
-actor SequenceProvider: MarketDataProvider {
-    private var tickers: [BTCTicker]
-
-    init(tickers: [BTCTicker]) {
-        self.tickers = tickers
-    }
-
-    func fetchAssets() async throws -> [CoinInfo] {
-        [.bitcoin]
-    }
-
-    func fetchTicker(id: String) async throws -> BTCTicker {
-        tickers.removeFirst()
+struct MockTickerStreamProvider: TickerStreamProvider {
+    func streamTicker(token: String, symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(BTCTicker(
+                id: symbol,
+                symbol: "BTC",
+                name: "Bitcoin",
+                nameid: "bitcoin",
+                rank: 1,
+                date: Date(),
+                priceUSD: 100,
+                percentChange5m: nil,
+                percentChange15m: nil,
+                marketCapUSD: nil,
+                volume24: nil
+            ))
+            continuation.finish()
+        }
     }
 }

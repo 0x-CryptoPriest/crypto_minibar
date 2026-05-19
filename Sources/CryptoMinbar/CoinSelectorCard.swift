@@ -14,7 +14,8 @@ struct CoinSelectorCard: View {
                 set: { viewModel.selectCoin(id: $0) }
             )) {
                 ForEach(viewModel.coins) { coin in
-                    Text("\(coin.symbol) · \(coin.name)").tag(coin.id)
+                    Label("\(coin.symbol) · \(coin.name)", systemImage: coin.symbolName)
+                        .tag(coin.id)
                 }
             }
             .pickerStyle(.menu)

@@ -5,17 +5,26 @@ struct MarketStatsCard: View {
     let lastUpdated: Date?
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
-            GridRow {
-                StatTile(title: "1h", value: percentText(ticker?.percentChange1h), tone: tone(for: ticker?.percentChange1h))
-                StatTile(title: "24h", value: percentText(ticker?.percentChange24h), tone: tone(for: ticker?.percentChange24h))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                StatTile(title: "5min", value: percentText(ticker?.percentChange5m), tone: tone(for: ticker?.percentChange5m))
+                StatTile(title: "15min", value: percentText(ticker?.percentChange15m), tone: tone(for: ticker?.percentChange15m))
             }
 
-            GridRow {
-                StatTile(title: "4h", value: percentText(ticker?.percentChange4h), tone: tone(for: ticker?.percentChange4h))
-                StatTile(title: "Updated", value: updatedText, tone: .neutral)
+            HStack {
+                Label("Runtime tick history · 20min memory", systemImage: "clock.arrow.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(updatedText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
         }
+        .frame(minHeight: 68, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var updatedText: String {
