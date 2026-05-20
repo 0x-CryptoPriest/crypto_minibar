@@ -92,7 +92,9 @@ final class TickerViewModel: ObservableObject {
 
     func start() {
         hasSavedAPIKey = tokenStore.readToken() != nil
-        refreshNotificationStatus()
+        Task { [weak self] in
+            await self?.refreshNotificationStatus()
+        }
         connectWithSavedToken()
     }
 
@@ -171,31 +173,29 @@ final class TickerViewModel: ObservableObject {
 
     func requestNotificationPermission() {
         notificationStatusText = "Checking notifications..."
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            switch settings.authorizationStatus {
+        Task { [weak self] in
+            guard let self else { return }
+            let authorizationStatus = await Self.currentNotificationAuthorizationStatus()
+            switch authorizationStatus {
             case .notDetermined:
-                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                    Task { @MainActor in
-                        self?.refreshNotificationStatus()
-                        if granted {
-                            self?.sendTestNotification()
-                        }
+                do {
+                    let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+                    await self.refreshNotificationStatus()
+                    if granted {
+                        self.sendTestNotification()
                     }
+                } catch {
+                    self.notificationStatusText = "Notification failed"
+                    self.errorMessage = error.localizedDescription
                 }
             case .denied:
-                Task { @MainActor in
-                    self?.notificationStatusText = "Notifications blocked"
-                    self?.openNotificationSettings()
-                }
+                self.notificationStatusText = "Notifications blocked"
+                self.openNotificationSettings()
             case .authorized, .provisional, .ephemeral:
-                Task { @MainActor in
-                    self?.refreshNotificationStatus()
-                    self?.sendTestNotification()
-                }
+                await self.refreshNotificationStatus()
+                self.sendTestNotification()
             @unknown default:
-                Task { @MainActor in
-                    self?.refreshNotificationStatus()
-                }
+                await self.refreshNotificationStatus()
             }
         }
     }
@@ -207,25 +207,21 @@ final class TickerViewModel: ObservableObject {
         content.body = "Notifications are ready."
         content.sound = .default
         let request = UNNotificationRequest(identifier: "notification-test-\(UUID().uuidString)", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { [weak self] error in
-            Task { @MainActor in
-                if let error {
-                    self?.notificationStatusText = "Notification failed"
-                    self?.errorMessage = error.localizedDescription
-                } else {
-                    self?.notificationStatusText = "Test notification sent"
-                }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await UNUserNotificationCenter.current().add(request)
+                self.notificationStatusText = "Test notification sent"
+            } catch {
+                self.notificationStatusText = "Notification failed"
+                self.errorMessage = error.localizedDescription
             }
         }
     }
 
-    func refreshNotificationStatus() {
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            let authorizationStatus = settings.authorizationStatus
-            Task { @MainActor in
-                self?.notificationStatusText = Self.notificationStatusText(for: authorizationStatus)
-            }
-        }
+    func refreshNotificationStatus() async {
+        let authorizationStatus = await Self.currentNotificationAuthorizationStatus()
+        notificationStatusText = Self.notificationStatusText(for: authorizationStatus)
     }
 
     func openNotificationSettings() {
@@ -383,6 +379,14 @@ final class TickerViewModel: ObservableObject {
             return "Notifications temporary"
         @unknown default:
             return "Notification status unknown"
+        }
+    }
+
+    private nonisolated static func currentNotificationAuthorizationStatus() async -> UNAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus)
+            }
         }
     }
 

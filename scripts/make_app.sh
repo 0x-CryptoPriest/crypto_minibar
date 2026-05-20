@@ -6,6 +6,7 @@ APP_NAME="CryptoMinbar"
 APP_DIR="$ROOT_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
 DMG_PATH="$ROOT_DIR/$APP_NAME.dmg"
 
 echo "==> Building release binary..."
@@ -13,8 +14,9 @@ swift build --package-path "$ROOT_DIR" -c release
 
 echo "==> Assembling .app bundle..."
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$ROOT_DIR/.build/release/$APP_NAME" "$MACOS_DIR/$APP_NAME"
+cp "$ROOT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -29,6 +31,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <string>CryptoMinbar</string>
     <key>CFBundleDisplayName</key>
     <string>Crypto Minibar</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
