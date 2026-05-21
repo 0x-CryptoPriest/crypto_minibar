@@ -5,11 +5,11 @@ struct CoinSelectorCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Market")
+            Text("Symbol")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Picker("Coin", selection: Binding(
+            Picker("Symbol", selection: Binding(
                 get: { viewModel.selectedCoin.id },
                 set: { viewModel.selectCoin(id: $0) }
             )) {
@@ -20,7 +20,7 @@ struct CoinSelectorCard: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .accessibilityLabel("Selected coin")
+            .accessibilityLabel("Selected symbol")
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

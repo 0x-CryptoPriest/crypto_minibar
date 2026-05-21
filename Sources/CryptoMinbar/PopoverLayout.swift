@@ -12,7 +12,7 @@ enum PopoverLayout {
 
     private enum ModuleHeight {
         static let priceHero: CGFloat = 148
-        static let apiSettings: CGFloat = 216
+        static let apiSettings: CGFloat = 300
         static let coinSelector: CGFloat = 70
         static let marketStats: CGFloat = 68
         static let alertsHeaderOnly: CGFloat = 48

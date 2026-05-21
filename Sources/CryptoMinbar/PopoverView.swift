@@ -8,13 +8,14 @@ struct PopoverView: View {
             PriceHeroCard(
                 ticker: viewModel.ticker,
                 selectedCoin: viewModel.selectedCoin,
+                feedMode: viewModel.feedMode,
                 statusTitle: viewModel.statusTitle,
                 isRefreshing: viewModel.isRefreshing,
                 copyPrice: copyPrice
             )
 
             if viewModel.isShowingAPISettings {
-                APIKeySettingsCard(viewModel: viewModel)
+                FeedSettingsCard(viewModel: viewModel)
             }
 
             CoinSelectorCard(viewModel: viewModel)

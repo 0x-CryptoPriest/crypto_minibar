@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BTC premium feed</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #111830;
+      --line: #243056;
+      --text: #e8edf7;
+      --muted: #8e99b7;
+      --accent: #5ac8fa;
+      --good: #4cd964;
+      --bad: #ff6b6b;
+    }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: rgba(17, 24, 48, 0.9);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    input, button {
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    input {
+      min-width: 240px;
+      flex: 1 1 280px;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:hover {
+      border-color: var(--accent);
+    }
+    .status {
+      color: var(--muted);
+      margin: 8px 0 20px;
+    }
+    .price {
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: 0;
+      margin: 8px 0;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+      color: #d8e2ff;
+    }
+    .good { color: var(--good); }
+    .bad { color: var(--bad); }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    .tiny { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <div class="row">
+        <input id="feedUrl" value="wss://blackphoenix.online/connection/websocket" aria-label="Feed URL">
+        <input id="token" type="password" placeholder="User token" aria-label="User token">
+        <button id="connect">Connect</button>
+      </div>
+      <div class="tiny muted">Auth endpoint: <code id="authEndpoint"></code></div>
+      <div class="status" id="status">idle</div>
+      <div class="price" id="price">--</div>
+      <div class="muted" id="meta">waiting for BTC ticks</div>
+    </div>
+
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px;">Latest event</div>
+      <pre id="raw">{"feed":"alltick-btc"}</pre>
+    </div>
+
+    <div class="card muted">
+      Endpoint: <code id="endpoint"></code><br>
+      Admin: <a href="/auth/admin" target="_blank" rel="noreferrer">/auth/admin</a>
+    </div>
+  </main>
+
+  <script>
+    const feedUrlEl = document.getElementById('feedUrl');
+    const tokenEl = document.getElementById('token');
+    const endpointEl = document.getElementById('endpoint');
+    const authEndpointEl = document.getElementById('authEndpoint');
+    const statusEl = document.getElementById('status');
+    const priceEl = document.getElementById('price');
+    const metaEl = document.getElementById('meta');
+    const rawEl = document.getElementById('raw');
+    const connectBtn = document.getElementById('connect');
+
+    let socket = null;
+    let reconnectTimer = null;
+    let reconnectAttempts = 0;
+    let currentAuth = null;
+
+    function setStatus(text, cls = '') {
+      statusEl.className = `status ${cls}`.trim();
+      statusEl.textContent = text;
+    }
+
+    function formatPrice(value) {
+      if (value === undefined || value === null || value === '') return '--';
+      const num = Number(value);
+      return Number.isFinite(num) ? num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 }) : String(value);
+    }
+
+    function normalizeWebSocketURL(raw) {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      const withScheme = trimmed.includes('://') ? trimmed : `wss://${trimmed}`;
+      const url = new URL(withScheme);
+      if (!url.pathname || url.pathname === '/') {
+        url.pathname = '/connection/websocket';
+      }
+      return url;
+    }
+
+    function authURLFor(feedURL) {
+      const url = new URL(feedURL.href);
+      url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+      url.pathname = '/auth/exchange';
+      url.search = '';
+      url.hash = '';
+      return url;
+    }
+
+    function sendCommand(command) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(`${JSON.stringify(command)}\n`);
+    }
+
+    function handleMessage(event) {
+      const frames = String(event.data).trim().split('\n').filter(Boolean);
+      for (const frame of frames) {
+        const message = JSON.parse(frame);
+        rawEl.textContent = JSON.stringify(message, null, 2);
+
+        if (message.connect) {
+          setStatus('connected', 'good');
+          continue;
+        }
+
+        if (message.error) {
+          setStatus(`error: ${message.error.message}`, 'bad');
+          continue;
+        }
+
+        const data = message.push?.pub?.data;
+        if (!data) continue;
+        priceEl.textContent = formatPrice(data.price);
+        metaEl.textContent = `${data.symbol || 'BTCUSDT'} • ${data.received_at || new Date().toISOString()}`;
+        rawEl.textContent = JSON.stringify(data, null, 2);
+      }
+    }
+
+    async function exchangeAndConnect() {
+      const feedURL = normalizeWebSocketURL(feedUrlEl.value);
+      const userToken = tokenEl.value.trim();
+      if (!feedURL) {
+        setStatus('enter a valid feed URL', 'bad');
+        return;
+      }
+      if (!userToken) {
+        setStatus('enter your user token', 'bad');
+        return;
+      }
+
+      endpointEl.textContent = feedURL.href;
+      const authURL = authURLFor(feedURL);
+      authEndpointEl.textContent = authURL.href;
+
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (socket) {
+        try { socket.close(); } catch (_) {}
+        socket = null;
+      }
+
+      setStatus('exchanging token...', 'muted');
+      const response = await fetch(authURL.href, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setStatus(payload.error ? `auth failed: ${payload.error}` : `auth failed: ${response.status}`, 'bad');
+        return;
+      }
+
+      currentAuth = payload;
+      setStatus(`connecting to ${payload.channels?.join(', ') || 'market:btc'}...`, 'muted');
+      socket = new WebSocket(`${payload.websocket_url || feedURL.href}?cf_ws_frame_ping_pong=true`);
+      socket.addEventListener('open', () => {
+        sendCommand({ id: 1, connect: { token: payload.centrifugo_token } });
+      });
+      socket.addEventListener('message', handleMessage);
+      socket.addEventListener('error', () => setStatus('websocket error', 'bad'));
+      socket.addEventListener('close', () => {
+        setStatus('disconnected, reconnecting...', 'bad');
+        reconnectAttempts += 1;
+        reconnectTimer = setTimeout(() => {
+          exchangeAndConnect().catch((err) => {
+            setStatus(err?.message || 'reconnect failed', 'bad');
+          });
+        }, Math.min(3000 + reconnectAttempts * 500, 5000));
+      });
+    }
+
+    connectBtn.addEventListener('click', () => {
+      reconnectAttempts = 0;
+      exchangeAndConnect().catch((err) => setStatus(err?.message || 'connect failed', 'bad'));
+    });
+    tokenEl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') connectBtn.click();
+    });
+    feedUrlEl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') connectBtn.click();
+    });
+
+    endpointEl.textContent = feedUrlEl.value;
+    authEndpointEl.textContent = authURLFor(normalizeWebSocketURL(feedUrlEl.value)).href;
+    setStatus('idle');
+  </script>
+</body>
+</html>

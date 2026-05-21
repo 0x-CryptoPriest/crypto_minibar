@@ -7,7 +7,7 @@ struct BTCTicker: Equatable, Sendable {
     let nameid: String
     let rank: Int
     let date: Date
-    let priceUSD: Decimal
+    let price: Decimal
     let percentChange5m: Decimal?
     let percentChange15m: Decimal?
     let marketCapUSD: Decimal?

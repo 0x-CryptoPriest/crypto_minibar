@@ -1,15 +1,15 @@
 import Foundation
 import Security
 
-protocol AllTickTokenStoring: Sendable {
+protocol PremiumUserTokenStoring: Sendable {
     func readToken() -> String?
     func saveToken(_ token: String) throws
     func deleteToken() throws
 }
 
-struct AllTickTokenStore: AllTickTokenStoring {
-    private let service = "CryptoMinbar.AllTick"
-    private let account = "api-token"
+struct PremiumUserTokenStore: PremiumUserTokenStoring {
+    private let service = "CryptoMinbar.Premium"
+    private let account = "user-token"
 
     func readToken() -> String? {
         var query = baseQuery
@@ -60,16 +60,5 @@ struct AllTickTokenStore: AllTickTokenStoring {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-    }
-}
-
-enum KeychainError: LocalizedError {
-    case unhandledStatus(OSStatus)
-
-    var errorDescription: String? {
-        switch self {
-        case .unhandledStatus(let status):
-            "Keychain operation failed with status \(status)."
-        }
     }
 }

@@ -5,7 +5,6 @@ protocol TickerStreamProvider: Sendable {
 }
 
 struct AllTickWebSocketProvider: TickerStreamProvider {
-    private let endpoint = URL(string: "wss://quote.alltick.co/quote-b-ws-api")!
     private let session: URLSession
 
     init(session: URLSession = .shared) {
@@ -14,12 +13,15 @@ struct AllTickWebSocketProvider: TickerStreamProvider {
 
     func streamTicker(token: String, symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
         AsyncThrowingStream { continuation in
-            let url = endpoint.appending(queryItems: [URLQueryItem(name: "token", value: token)])
+            guard let coin = CoinInfo.allTickSymbols.first(where: { $0.id == symbol }) else {
+                continuation.finish(throwing: AllTickError.unknownSymbol(symbol))
+                return
+            }
+            let url = coin.quoteEndpoint.url.appending(queryItems: [URLQueryItem(name: "token", value: token)])
             let webSocket = session.webSocketTask(with: url)
             let task = Task {
                 var history = PriceHistory()
                 let sequence = AllTickSequence()
-                let coin = CoinInfo.allTickSymbols.first(where: { $0.id == symbol }) ?? CoinInfo.bitcoin
                 webSocket.resume()
 
                 do {
@@ -52,7 +54,7 @@ struct AllTickWebSocketProvider: TickerStreamProvider {
                             nameid: coin.nameid,
                             rank: coin.rank,
                             date: date,
-                            priceUSD: tick.price,
+                            price: tick.price,
                             percentChange5m: history.percentChange(minutes: 5, currentPrice: tick.price, at: date),
                             percentChange15m: history.percentChange(minutes: 15, currentPrice: tick.price, at: date),
                             marketCapUSD: nil,
@@ -211,11 +213,14 @@ private struct AllTickTick: Equatable, Sendable {
 
 enum AllTickError: LocalizedError {
     case encodingFailed
+    case unknownSymbol(String)
 
     var errorDescription: String? {
         switch self {
         case .encodingFailed:
             "Failed to encode AllTick websocket request."
+        case .unknownSymbol(let symbol):
+            "Unknown AllTick symbol: \(symbol)"
         }
     }
 }

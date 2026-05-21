@@ -1,38 +1,25 @@
 import SwiftUI
 
-struct APIKeySettingsCard: View {
+struct FeedSettingsCard: View {
     @ObservedObject var viewModel: TickerViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("AllTick API Key", systemImage: viewModel.hasSavedAPIKey ? "checkmark.seal.fill" : "key.fill")
-                    .font(.caption)
-                    .foregroundStyle(viewModel.hasSavedAPIKey ? CryptoMinbarDesign.positive : .secondary)
-
-                Spacer()
-
-                if viewModel.hasSavedAPIKey {
-                    Text("Saved")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            Picker("Feed mode", selection: Binding(
+                get: { viewModel.feedMode },
+                set: { viewModel.selectFeedMode($0) }
+            )) {
+                ForEach(FeedMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
                 }
             }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Feed mode")
 
-            SecureField("Paste API key", text: $viewModel.apiKeyInput)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("AllTick API key")
-
-            HStack(spacing: 10) {
-                Button("Save & Connect", systemImage: "bolt.horizontal.fill", action: viewModel.saveAPIKey)
-                    .buttonStyle(.borderedProminent)
-
-                if viewModel.hasSavedAPIKey {
-                    Button("Clear", systemImage: "trash", action: viewModel.clearAPIKey)
-                        .buttonStyle(.bordered)
-                }
-
-                Spacer()
+            if viewModel.feedMode == .standard {
+                standardSettings
+            } else {
+                premiumSettings
             }
 
             Divider()
@@ -73,5 +60,75 @@ struct APIKeySettingsCard: View {
         }
         .padding(12)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: CryptoMinbarDesign.compactCornerRadius))
+    }
+
+    private var standardSettings: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header(
+                title: "Standard · AllTick API Key",
+                isSaved: viewModel.hasSavedStandardAPIKey,
+                icon: viewModel.hasSavedStandardAPIKey ? "checkmark.seal.fill" : "key.fill"
+            )
+
+            SecureField("Paste AllTick API key", text: $viewModel.standardAPIKeyInput)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Standard AllTick API key")
+
+            HStack(spacing: 10) {
+                Button("Save & Connect", systemImage: "bolt.horizontal.fill", action: viewModel.saveStandardAPIKey)
+                    .buttonStyle(.borderedProminent)
+
+                if viewModel.hasSavedStandardAPIKey {
+                    Button("Clear", systemImage: "trash", action: viewModel.clearStandardAPIKey)
+                        .buttonStyle(.bordered)
+                }
+
+                Spacer()
+            }
+        }
+    }
+
+    private var premiumSettings: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header(
+                title: "Premium · User Token",
+                isSaved: viewModel.hasSavedPremiumUserToken,
+                icon: viewModel.hasSavedPremiumUserToken ? "checkmark.shield.fill" : "shield.fill"
+            )
+
+            SecureField("Paste user token", text: $viewModel.premiumUserTokenInput)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Premium user token")
+
+            HStack(spacing: 10) {
+                Button("Save & Connect", systemImage: "bolt.shield.fill", action: viewModel.savePremiumCredentials)
+                    .buttonStyle(.borderedProminent)
+
+                if viewModel.hasSavedPremiumUserToken {
+                    Button("Clear", systemImage: "trash", action: viewModel.clearPremiumCredentials)
+                        .buttonStyle(.bordered)
+                }
+
+                Spacer()
+            }
+        }
+    }
+
+    private func header(title: String, isSaved: Bool, icon: String) -> some View {
+        HStack {
+            Label(title, systemImage: icon)
+                .font(.caption)
+                .foregroundStyle(isSaved ? CryptoMinbarDesign.positive : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Spacer()
+
+            if isSaved {
+                Text("Saved")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }

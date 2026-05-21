@@ -12,11 +12,11 @@ enum DisplayFormatters {
 
     static let price: NumberFormatter = {
         let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        formatter.numberStyle = .decimal
         formatter.locale = Locale(identifier: "en_US")
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = 2
+        formatter.usesGroupingSeparator = true
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 4
         return formatter
     }()
 }
