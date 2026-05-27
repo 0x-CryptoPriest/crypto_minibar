@@ -64,26 +64,53 @@ struct FeedSettingsCard: View {
 
     private var standardSettings: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Picker("Standard source", selection: Binding(
+                get: { viewModel.standardFeedProvider },
+                set: { viewModel.selectStandardFeedProvider($0) }
+            )) {
+                ForEach(StandardFeedProvider.allCases) { provider in
+                    Text(provider.label).tag(provider)
+                }
+            }
+            .pickerStyle(.menu)
+            .accessibilityLabel("Standard source")
+
             header(
-                title: "Standard · AllTick API Key",
-                isSaved: viewModel.hasSavedStandardAPIKey,
-                icon: viewModel.hasSavedStandardAPIKey ? "checkmark.seal.fill" : "key.fill"
+                title: viewModel.standardFeedProvider.sourceLabel,
+                isSaved: !viewModel.standardFeedProvider.requiresToken || viewModel.hasSavedStandardAPIKey,
+                icon: standardProviderIcon,
+                statusText: standardProviderStatusText
             )
 
-            SecureField("Paste AllTick API key", text: $viewModel.standardAPIKeyInput)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Standard AllTick API key")
+            if viewModel.standardFeedProvider.requiresToken {
+                SecureField("Paste AllTick API key", text: $viewModel.standardAPIKeyInput)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Standard AllTick API key")
 
-            HStack(spacing: 10) {
-                Button("Save & Connect", systemImage: "bolt.horizontal.fill", action: viewModel.saveStandardAPIKey)
+                HStack(spacing: 10) {
+                    Button("Save & Connect", systemImage: "bolt.horizontal.fill", action: viewModel.saveStandardAPIKey)
+                        .buttonStyle(.borderedProminent)
+
+                    if viewModel.hasSavedStandardAPIKey {
+                        Button("Clear", systemImage: "trash", action: viewModel.clearStandardAPIKey)
+                            .buttonStyle(.bordered)
+                    }
+
+                    Spacer()
+                }
+            } else {
+                Label("Public websocket source. No API key required.", systemImage: "bolt.badge.checkmark")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    Button("Reconnect", systemImage: "arrow.clockwise") {
+                        Task { await viewModel.refreshNow() }
+                    }
                     .buttonStyle(.borderedProminent)
 
-                if viewModel.hasSavedStandardAPIKey {
-                    Button("Clear", systemImage: "trash", action: viewModel.clearStandardAPIKey)
-                        .buttonStyle(.bordered)
+                    Spacer()
                 }
-
-                Spacer()
             }
         }
     }
@@ -93,7 +120,8 @@ struct FeedSettingsCard: View {
             header(
                 title: "Premium · User Token",
                 isSaved: viewModel.hasSavedPremiumUserToken,
-                icon: viewModel.hasSavedPremiumUserToken ? "checkmark.shield.fill" : "shield.fill"
+                icon: viewModel.hasSavedPremiumUserToken ? "checkmark.shield.fill" : "shield.fill",
+                statusText: viewModel.hasSavedPremiumUserToken ? "Saved" : nil
             )
 
             SecureField("Paste user token", text: $viewModel.premiumUserTokenInput)
@@ -114,7 +142,7 @@ struct FeedSettingsCard: View {
         }
     }
 
-    private func header(title: String, isSaved: Bool, icon: String) -> some View {
+    private func header(title: String, isSaved: Bool, icon: String, statusText: String?) -> some View {
         HStack {
             Label(title, systemImage: icon)
                 .font(.caption)
@@ -124,11 +152,25 @@ struct FeedSettingsCard: View {
 
             Spacer()
 
-            if isSaved {
-                Text("Saved")
+            if let statusText {
+                Text(statusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var standardProviderIcon: String {
+        if viewModel.standardFeedProvider.requiresToken {
+            return viewModel.hasSavedStandardAPIKey ? "checkmark.seal.fill" : "key.fill"
+        }
+        return "bolt.horizontal.circle.fill"
+    }
+
+    private var standardProviderStatusText: String? {
+        if viewModel.standardFeedProvider.requiresToken {
+            return viewModel.hasSavedStandardAPIKey ? "Saved" : nil
+        }
+        return "Public"
     }
 }

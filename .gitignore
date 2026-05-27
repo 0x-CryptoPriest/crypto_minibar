@@ -2,3 +2,6 @@
 CryptoMinbar.app/
 .DS_Store
 *.xcuserdata/
+.claude/
+.codegraph/
+.cursor/

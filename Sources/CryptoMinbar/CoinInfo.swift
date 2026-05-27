@@ -61,6 +61,26 @@ extension CoinInfo {
         quoteEndpoint: .forexCryptoCommodity
     )
 
+    static let ethereum = CoinInfo(
+        id: "ETHUSDT",
+        symbol: "ETH/USDT",
+        name: "Ethereum/Tether",
+        nameid: "ethereum-tether",
+        rank: 11,
+        market: .crypto,
+        quoteEndpoint: .forexCryptoCommodity
+    )
+
+    static let solana = CoinInfo(
+        id: "SOLUSDT",
+        symbol: "SOL/USDT",
+        name: "Solana/Tether",
+        nameid: "solana-tether",
+        rank: 12,
+        market: .crypto,
+        quoteEndpoint: .forexCryptoCommodity
+    )
+
     static let allTickSymbols: [CoinInfo] = [
         CoinInfo(
             id: "USDJPY",
@@ -148,5 +168,11 @@ extension CoinInfo {
 
     static let premiumSymbols: [CoinInfo] = [
         .bitcoin
+    ]
+
+    static let exchangeSymbols: [CoinInfo] = [
+        .bitcoin,
+        .ethereum,
+        .solana
     ]
 }

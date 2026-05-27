@@ -4,7 +4,7 @@ import SwiftUI
 struct PriceHeroCard: View {
     let ticker: BTCTicker?
     let selectedCoin: CoinInfo
-    let feedMode: FeedMode
+    let feedSourceLabel: String
     let statusTitle: String
     let isRefreshing: Bool
     let copyPrice: () -> Void
@@ -18,7 +18,7 @@ struct PriceHeroCard: View {
                         .labelStyle(.titleAndIcon)
                         .symbolRenderingMode(.hierarchical)
 
-                    Text("\(selectedCoin.symbol) · \(selectedCoin.market.rawValue) · \(feedMode.label)")
+                    Text("\(selectedCoin.symbol) · \(selectedCoin.market.rawValue) · \(feedSourceLabel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

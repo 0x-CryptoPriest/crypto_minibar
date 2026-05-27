@@ -18,7 +18,7 @@ enum FeedMode: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     var sourceLabel: String {
         switch self {
         case .standard:
-            "AllTick direct"
+            "Public feed"
         case .premium:
             "Private feed"
         }

@@ -8,7 +8,7 @@ struct PopoverView: View {
             PriceHeroCard(
                 ticker: viewModel.ticker,
                 selectedCoin: viewModel.selectedCoin,
-                feedMode: viewModel.feedMode,
+                feedSourceLabel: viewModel.feedSourceLabel,
                 statusTitle: viewModel.statusTitle,
                 isRefreshing: viewModel.isRefreshing,
                 copyPrice: copyPrice

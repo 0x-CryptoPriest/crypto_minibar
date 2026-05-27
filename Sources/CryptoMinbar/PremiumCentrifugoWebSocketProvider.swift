@@ -207,17 +207,10 @@ private final class PremiumCentrifugoDelegate: CentrifugeClientDelegate {
             let currentHistory = history
             lock.unlock()
 
-            continuation.yield(BTCTicker(
-                id: coin.id,
-                symbol: coin.symbol,
-                name: coin.name,
-                nameid: coin.nameid,
-                rank: coin.rank,
-                date: tick.date,
+            continuation.yield(coin.liveTicker(
                 price: tick.price,
-                percentChange5m: currentHistory.percentChange(minutes: 5, currentPrice: tick.price, at: tick.date),
-                percentChange15m: currentHistory.percentChange(minutes: 15, currentPrice: tick.price, at: tick.date),
-                marketCapUSD: nil,
+                date: tick.date,
+                history: currentHistory,
                 volume24: tick.volume
             ))
         } catch {

@@ -79,16 +79,40 @@ struct TickerViewModelTests {
         #expect(standardProvider.snapshot.maxActiveStreams == 1)
         #expect(premiumProvider.snapshot.maxActiveStreams == 1)
     }
+
+    @MainActor
+    @Test("switching standard provider loads public crypto and connects without API key")
+    func switchingStandardProviderLoadsPublicCryptoAndConnectsWithoutApiKey() async {
+        resetTickerPreferences()
+        let provider = RecordingTickerStreamProvider()
+        let viewModel = TickerViewModel(
+            streamProvider: provider,
+            tokenStore: MockTokenStore(token: nil)
+        )
+
+        viewModel.start()
+        #expect(provider.snapshot.startedSymbols.isEmpty)
+
+        viewModel.selectStandardFeedProvider(.binance)
+
+        #expect(viewModel.standardFeedProvider == .binance)
+        #expect(viewModel.coins == CoinInfo.exchangeSymbols)
+        #expect(viewModel.selectedCoin.id == "BTCUSDT")
+        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTCUSDT"] })
+    }
 }
 
 private func resetTickerPreferences() {
-    for key in [
+    let keys = [
         "feedMode",
+        "standardFeedProvider",
         "selectedCoinID",
         "selectedStandardCoinID",
         "selectedPremiumCoinID",
         "premiumFeedURL"
-    ] {
+    ] + StandardFeedProvider.allCases.map { "selectedStandardCoinID.\($0.rawValue)" }
+
+    for key in keys {
         UserDefaults.standard.removeObject(forKey: key)
     }
 }

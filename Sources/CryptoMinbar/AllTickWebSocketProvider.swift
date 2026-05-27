@@ -47,17 +47,10 @@ struct AllTickWebSocketProvider: TickerStreamProvider {
                         }
                         let date = tick.date
                         history = history.appending(price: tick.price, at: date)
-                        continuation.yield(BTCTicker(
-                            id: coin.id,
-                            symbol: coin.symbol,
-                            name: coin.name,
-                            nameid: coin.nameid,
-                            rank: coin.rank,
-                            date: date,
+                        continuation.yield(coin.liveTicker(
                             price: tick.price,
-                            percentChange5m: history.percentChange(minutes: 5, currentPrice: tick.price, at: date),
-                            percentChange15m: history.percentChange(minutes: 15, currentPrice: tick.price, at: date),
-                            marketCapUSD: nil,
+                            date: date,
+                            history: history,
                             volume24: tick.volume
                         ))
                     }
@@ -125,19 +118,6 @@ private actor AllTickSequence {
         let current = value
         value += 1
         return current
-    }
-}
-
-private extension URLSessionWebSocketTask.Message {
-    var textValue: String? {
-        switch self {
-        case .string(let text):
-            text
-        case .data(let data):
-            String(data: data, encoding: .utf8)
-        @unknown default:
-            nil
-        }
     }
 }
 
