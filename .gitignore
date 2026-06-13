@@ -1,5 +1,7 @@
 .build/
+MiniC.app/
 CryptoMinbar.app/
+*.dmg
 .DS_Store
 *.xcuserdata/
 .claude/

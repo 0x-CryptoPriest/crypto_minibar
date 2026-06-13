@@ -251,7 +251,7 @@ final class TickerViewModel: ObservableObject {
         }
         notificationStatusText = "Sending test notification..."
         let content = UNMutableNotificationContent()
-        content.title = "Crypto Minibar"
+        content.title = "MiniC"
         content.body = "Notifications are ready."
         content.sound = .default
         let request = UNNotificationRequest(identifier: "notification-test-\(UUID().uuidString)", content: content, trigger: nil)

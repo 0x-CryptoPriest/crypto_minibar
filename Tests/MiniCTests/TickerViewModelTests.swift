@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import CryptoMinbar
+@testable import MiniC
 
 @Suite("Ticker view model")
 struct TickerViewModelTests {

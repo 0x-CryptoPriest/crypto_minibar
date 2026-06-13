@@ -1,9 +1,9 @@
-# Crypto Minibar
+# MiniC
 
 A lightweight macOS menu-bar crypto ticker powered entirely by the **Hyperliquid public feed** — no account, no API key, no tracking. The live price sits in your menu bar; click it for a compact panel with a 24-hour candlestick chart, configurable change windows, and price alerts.
 
 <p align="center">
-  <img src="docs/screenshot-compact.png" alt="Crypto Minibar compact panel" width="280">
+  <img src="docs/screenshot-compact.png" alt="MiniC compact panel" width="280">
 </p>
 
 ## Features
@@ -22,28 +22,41 @@ A lightweight macOS menu-bar crypto ticker powered entirely by the **Hyperliquid
 | --- | --- |
 | <img src="docs/screenshot-panel.png" alt="Full panel with chart, alerts and settings" width="260"> | <img src="docs/screenshot-alert.png" alt="Price alert notification" width="420"> |
 
+## Install
+
+Download the latest **`MiniC.dmg`** from the [**Releases**](../../releases) page, open it, and drag **MiniC** to **Applications**. It runs as a menu-bar item (no Dock icon).
+
+The DMG is built in the cloud by GitHub Actions and attached to each release — nothing is uploaded by hand. It is ad-hoc signed (not notarized), so on first launch you may need to right-click → **Open** to get past Gatekeeper.
+
 ## Requirements
 
 - macOS 14 (Sonoma) or later
-- Swift 6.1 toolchain / Xcode 16 (only to build)
+- Swift 6.1 toolchain / Xcode 16 (only to build from source)
 
-## Build & install
+## Build from source
 
-Build a signed `.app` and a `.dmg`:
+Build a signed `.app` and a `.dmg` locally:
 
 ```bash
 ./scripts/make_app.sh
 ```
 
-This produces `CryptoMinbar.app` and `CryptoMinbar.dmg` in the repo root. Open the DMG and drag the app to **Applications**. It runs as a menu-bar item (no Dock icon).
-
-To run a quick debug build during development:
+This produces `MiniC.app` and `MiniC.dmg` in the repo root. For a quick debug build during development:
 
 ```bash
 swift build
 ```
 
 > Note: launched as a bare binary the app skips notification setup (it needs an app bundle); use the `.app` for the full experience.
+
+## Releasing
+
+Pushing a version tag triggers the GitHub Actions workflow that builds the DMG on a macOS runner and publishes it to a Release:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
 
 ## How it works
 
@@ -53,7 +66,7 @@ swift build
 
 ## Privacy
 
-Crypto Minibar talks only to `api.hyperliquid.xyz`. It has no accounts, sends no credentials, and collects no analytics. Your selected coin, chosen change windows, and price alerts are stored locally in `UserDefaults`.
+MiniC talks only to `api.hyperliquid.xyz`. It has no accounts, sends no credentials, and collects no analytics. Your selected coin, chosen change windows, and price alerts are stored locally in `UserDefaults`.
 
 ## Tech notes
 

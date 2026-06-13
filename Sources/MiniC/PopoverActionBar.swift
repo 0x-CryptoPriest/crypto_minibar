@@ -24,7 +24,7 @@ struct PopoverActionBar: View {
                 Image(systemName: "power")
             }
             .buttonStyle(.bordered)
-            .help("Quit Crypto Minibar")
+            .help("Quit MiniC")
             .accessibilityLabel("Quit")
         }
     }

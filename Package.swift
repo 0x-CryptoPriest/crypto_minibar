@@ -2,20 +2,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "CryptoMinbar",
+    name: "MiniC",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "CryptoMinbar", targets: ["CryptoMinbar"])
+        .executable(name: "MiniC", targets: ["MiniC"])
     ],
     targets: [
         .executableTarget(
-            name: "CryptoMinbar",
-            path: "Sources/CryptoMinbar"
+            name: "MiniC",
+            path: "Sources/MiniC"
         ),
         .testTarget(
-            name: "CryptoMinbarTests",
-            dependencies: ["CryptoMinbar"],
-            path: "Tests/CryptoMinbarTests"
+            name: "MiniCTests",
+            dependencies: ["MiniC"],
+            path: "Tests/MiniCTests"
         )
     ]
 )

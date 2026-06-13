@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="CryptoMinbar"
+APP_NAME="MiniC"
 APP_DIR="$ROOT_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -24,23 +24,23 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>CryptoMinbar</string>
+    <string>MiniC</string>
     <key>CFBundleIdentifier</key>
-    <string>local.crypto-minbar</string>
+    <string>local.minic</string>
     <key>CFBundleName</key>
-    <string>CryptoMinbar</string>
+    <string>MiniC</string>
     <key>CFBundleDisplayName</key>
-    <string>Crypto Minibar</string>
+    <string>MiniC</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
-    <string>1.1.0</string>
+    <string>1.2.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.0</string>
+    <string>1.2.0</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Crypto Minibar</string>
+    <string>MiniC</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -57,7 +57,7 @@ PLIST
 echo "==> Built $APP_DIR"
 
 echo "==> Signing .app bundle..."
-codesign --force --deep --sign - --identifier "local.crypto-minbar" "$APP_DIR"
+codesign --force --deep --sign - --identifier "local.minic" "$APP_DIR"
 
 echo "==> Creating DMG..."
 STAGING_DIR=$(mktemp -d)
