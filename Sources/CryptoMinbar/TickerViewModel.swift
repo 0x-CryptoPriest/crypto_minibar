@@ -72,8 +72,9 @@ final class TickerViewModel: ObservableObject {
         self.catalogService = catalogService
         self.showChangeInBar = UserDefaults.standard.bool(forKey: "showChangeInBar")
         self.alerts = Self.loadAlerts()
-        self.coins = CoinInfo.defaultSymbols
-        self.selectedCoin = Self.storedCoin(in: CoinInfo.defaultSymbols)
+        let initialCoins = Self.cachedCatalog() ?? CoinInfo.defaultSymbols
+        self.coins = initialCoins
+        self.selectedCoin = Self.storedCoin(in: initialCoins)
         self.primaryWindow = Self.storedWindow(forKey: Self.primaryWindowKey, default: .h1)
         self.secondaryWindow = Self.storedWindow(forKey: Self.secondaryWindowKey, default: .h24)
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -95,7 +96,7 @@ final class TickerViewModel: ObservableObject {
 
     var statusTitle: String {
         guard let ticker else { return "\(selectedCoin.symbol) --" }
-        let price = Self.priceFormatter.string(for: ticker.price) ?? "--"
+        let price = "$\(DisplayFormatters.priceString(ticker.price))"
         guard showChangeInBar, let change = primaryChange else {
             return "\(ticker.symbol) \(price)"
         }
@@ -109,7 +110,7 @@ final class TickerViewModel: ObservableObject {
     /// The large headline price shown in the popover, formatted as USD currency.
     var heroPriceText: String {
         guard let ticker else { return "$ —" }
-        return Self.priceFormatter.string(for: ticker.price) ?? "—"
+        return "$\(DisplayFormatters.priceString(ticker.price))"
     }
 
     func start() {
@@ -145,7 +146,15 @@ final class TickerViewModel: ObservableObject {
             guard let names = try? await service.coins(), !names.isEmpty else { return }
             guard let self, !Task.isCancelled else { return }
             self.coins = names.map(CoinInfo.hyperliquid)
+            UserDefaults.standard.set(names, forKey: Self.catalogCacheKey)
         }
+    }
+
+    private static func cachedCatalog() -> [CoinInfo]? {
+        guard let names = UserDefaults.standard.stringArray(forKey: catalogCacheKey), !names.isEmpty else {
+            return nil
+        }
+        return names.map(CoinInfo.hyperliquid)
     }
 
     func selectCoin(id: String) {
@@ -456,7 +465,7 @@ final class TickerViewModel: ObservableObject {
     }
 
     func formatPrice(_ price: Decimal) -> String {
-        DisplayFormatters.price.string(from: NSDecimalNumber(decimal: price)) ?? "\(price)"
+        "$\(DisplayFormatters.priceString(price))"
     }
 
     private func saveAlerts() {
@@ -521,15 +530,6 @@ final class TickerViewModel: ObservableObject {
     private static let secondaryWindowKey = "secondaryChangeWindow"
     private static let baselineRefreshInterval: TimeInterval = 5 * 60
     private static let offlineThreshold = 4
+    private static let catalogCacheKey = "cachedCatalog"
     private static let canUseUserNotifications = Bundle.main.bundleURL.pathExtension == "app"
-
-    private static let priceFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        return formatter
-    }()
 }

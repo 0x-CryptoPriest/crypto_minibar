@@ -6,9 +6,31 @@ protocol TickerStreamProvider: Sendable {
 
 struct HyperliquidWebSocketProvider: TickerStreamProvider {
     private let session: URLSession
+    private static let pingInterval: Duration = .seconds(30)
+    private static let receiveTimeout: Duration = .seconds(45)
 
     init(session: URLSession = .shared) {
         self.session = session
+    }
+
+    /// Awaits the next message but fails with `staleConnection` if nothing
+    /// arrives within `timeout` — the signal we use to drop a dead socket.
+    private static func receive(
+        _ webSocket: URLSessionWebSocketTask,
+        timeout: Duration
+    ) async throws -> URLSessionWebSocketTask.Message {
+        try await withThrowingTaskGroup(of: URLSessionWebSocketTask.Message.self) { group in
+            group.addTask { try await webSocket.receive() }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw ExchangeFeedError.staleConnection(exchange: "Hyperliquid")
+            }
+            defer { group.cancelAll() }
+            guard let message = try await group.next() else {
+                throw CancellationError()
+            }
+            return message
+        }
     }
 
     func streamTicker(symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
@@ -25,15 +47,28 @@ struct HyperliquidWebSocketProvider: TickerStreamProvider {
             let task = Task {
                 webSocket.resume()
 
+                // Keep the connection alive: Hyperliquid drops idle sockets.
+                let heartbeat = Task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: Self.pingInterval)
+                        guard !Task.isCancelled else { break }
+                        try? await webSocket.send(.string(#"{"method":"ping"}"#))
+                    }
+                }
+
                 do {
                     defer {
+                        heartbeat.cancel()
                         webSocket.cancel(with: .goingAway, reason: nil)
                     }
 
                     try await subscribe(webSocket: webSocket, streamSymbol: streamSymbol)
 
                     while !Task.isCancelled {
-                        let message = try await webSocket.receive()
+                        // Time-bound the receive so a half-open socket (no error,
+                        // no data) is detected and reconnected instead of hanging.
+                        // Healthy connections always see a pong within the window.
+                        let message = try await Self.receive(webSocket, timeout: Self.receiveTimeout)
                         guard let text = message.textValue,
                               let tick = try decodeTrade(from: text, expectedSymbol: streamSymbol) else {
                             continue

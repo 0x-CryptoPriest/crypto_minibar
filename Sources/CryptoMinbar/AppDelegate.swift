@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Network
 import SwiftUI
 @preconcurrency import UserNotifications
 
@@ -9,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private let popover = NSPopover()
     private let viewModel = TickerViewModel()
     private var cancellables = Set<AnyCancellable>()
+    private let pathMonitor = NWPathMonitor()
+    private var hadNetwork = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -20,7 +23,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             UNUserNotificationCenter.current().delegate = self
         }
         bindStatusTitle()
+        observeNetworkAndWake()
         viewModel.start()
+    }
+
+    /// Reconnect immediately when the network returns or the Mac wakes, instead
+    /// of waiting out the websocket's reconnect backoff.
+    private func observeNetworkAndWake() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = path.status == .satisfied
+            Task { @MainActor in
+                guard let self else { return }
+                if satisfied && !self.hadNetwork {
+                    await self.viewModel.refreshNow()
+                }
+                self.hadNetwork = satisfied
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "network-path-monitor"))
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(systemDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func systemDidWake() {
+        Task { @MainActor in await viewModel.refreshNow() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -53,6 +53,7 @@ extension Date {
 enum ExchangeFeedError: LocalizedError {
     case encodingFailed(exchange: String)
     case unsupportedSymbol(exchange: String, symbol: String)
+    case staleConnection(exchange: String)
 
     var errorDescription: String? {
         switch self {
@@ -60,6 +61,8 @@ enum ExchangeFeedError: LocalizedError {
             "Failed to encode \(exchange) websocket request."
         case .unsupportedSymbol(let exchange, let symbol):
             "\(exchange) public websocket does not expose \(symbol) in this build."
+        case .staleConnection(let exchange):
+            "\(exchange) websocket stalled; reconnecting."
         }
     }
 }

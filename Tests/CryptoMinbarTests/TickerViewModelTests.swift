@@ -100,7 +100,7 @@ struct StubCatalogService: CoinCatalogProviding {
 }
 
 private func resetTickerPreferences() {
-    for key in ["selectedCoinID", "priceAlerts", "showChangeInBar"] {
+    for key in ["selectedCoinID", "priceAlerts", "showChangeInBar", "cachedCatalog"] {
         UserDefaults.standard.removeObject(forKey: key)
     }
 }
