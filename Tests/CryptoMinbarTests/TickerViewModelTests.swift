@@ -8,19 +8,19 @@ struct TickerViewModelTests {
     @Test("starts with the selected symbol placeholder before websocket tick")
     func startsWithSelectedSymbolPlaceholder() {
         resetTickerPreferences()
-        let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider())
+        let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider(), candleService: StubCandleService(), catalogService: StubCatalogService())
 
-        #expect(viewModel.statusTitle == "BTC/USDT --")
+        #expect(viewModel.statusTitle == "BTC --")
     }
 
     @MainActor
-    @Test("defaults to BTCUSDT on Hyperliquid")
+    @Test("defaults to BTC on Hyperliquid")
     func defaultsToBtcUsdt() {
         resetTickerPreferences()
-        let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider())
+        let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider(), candleService: StubCandleService(), catalogService: StubCatalogService())
 
-        #expect(viewModel.selectedCoin.id == "BTCUSDT")
-        #expect(viewModel.coins == CoinInfo.supportedSymbols)
+        #expect(viewModel.selectedCoin.id == "BTC")
+        #expect(viewModel.coins == CoinInfo.defaultSymbols)
         #expect(viewModel.feedSourceLabel == "Hyperliquid")
     }
 
@@ -29,11 +29,11 @@ struct TickerViewModelTests {
     func connectsWithoutCredentials() async {
         resetTickerPreferences()
         let provider = RecordingTickerStreamProvider()
-        let viewModel = TickerViewModel(streamProvider: provider)
+        let viewModel = TickerViewModel(streamProvider: provider, candleService: StubCandleService(), catalogService: StubCatalogService())
 
         viewModel.start()
 
-        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTCUSDT"] })
+        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTC"] })
     }
 
     @MainActor
@@ -41,15 +41,61 @@ struct TickerViewModelTests {
     func switchesWebSocketSubscriptionsOneAtATime() async {
         resetTickerPreferences()
         let provider = RecordingTickerStreamProvider()
-        let viewModel = TickerViewModel(streamProvider: provider)
+        let viewModel = TickerViewModel(streamProvider: provider, candleService: StubCandleService(), catalogService: StubCatalogService())
 
         viewModel.start()
-        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTCUSDT"] })
+        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTC"] })
 
-        viewModel.selectCoin(CoinInfo.ethereum)
-        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTCUSDT", "ETHUSDT"] })
+        viewModel.selectCoin(CoinInfo.hyperliquid("ETH"))
+        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTC", "ETH"] })
         #expect(provider.snapshot.maxActiveStreams == 1)
-        #expect(provider.snapshot.terminatedSymbols == ["BTCUSDT"])
+        #expect(provider.snapshot.terminatedSymbols == ["BTC"])
+    }
+
+    @MainActor
+    @Test("computes the change from the historical baseline, not from zero")
+    func computesChangeFromBaseline() async {
+        resetTickerPreferences()
+        let provider = RecordingTickerStreamProvider() // yields price 100
+        let now = Date()
+        let candles = [
+            PriceCandle(closeTime: now.addingTimeInterval(-3600), close: 80), // 1h ago
+            PriceCandle(closeTime: now.addingTimeInterval(-300), close: 95)    // 5m ago
+        ]
+        let viewModel = TickerViewModel(
+            streamProvider: provider,
+            candleService: StubCandleService(candles),
+            catalogService: StubCatalogService()
+        )
+
+        viewModel.start() // primaryWindow defaults to 1h → reference close 80
+
+        #expect(await waitUntil { viewModel.primaryChange != nil })
+        #expect(viewModel.primaryChange == 25) // (100 - 80) / 80 * 100
+    }
+}
+
+struct StubCandleService: CandleProviding {
+    let candles: [PriceCandle]
+
+    init(_ candles: [PriceCandle] = []) {
+        self.candles = candles
+    }
+
+    func candles(coinID: String) async throws -> [PriceCandle] {
+        candles
+    }
+}
+
+struct StubCatalogService: CoinCatalogProviding {
+    let names: [String]
+
+    init(_ names: [String] = []) {
+        self.names = names
+    }
+
+    func coins() async throws -> [String] {
+        names
     }
 }
 
@@ -70,9 +116,6 @@ struct MockTickerStreamProvider: TickerStreamProvider {
                 rank: 1,
                 date: Date(),
                 price: 100,
-                percentChange5m: nil,
-                percentChange15m: nil,
-                marketCapUSD: nil,
                 volume24: nil
             ))
             continuation.finish()
@@ -114,9 +157,6 @@ final class RecordingTickerStreamProvider: TickerStreamProvider, @unchecked Send
                 rank: 1,
                 date: Date(),
                 price: 100,
-                percentChange5m: nil,
-                percentChange15m: nil,
-                marketCapUSD: nil,
                 volume24: nil
             ))
 

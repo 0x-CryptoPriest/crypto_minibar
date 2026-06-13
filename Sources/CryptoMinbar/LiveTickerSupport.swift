@@ -1,12 +1,10 @@
 import Foundation
 
 extension CoinInfo {
-    func liveTicker(
-        price: Decimal,
-        date: Date,
-        history: PriceHistory,
-        volume24: Decimal?
-    ) -> BTCTicker {
+    /// Builds a ticker from a single live trade. Percent changes are computed
+    /// separately in the view model from a historical baseline, so the stream
+    /// only needs to carry the current price.
+    func liveTicker(price: Decimal, date: Date, volume24: Decimal?) -> BTCTicker {
         BTCTicker(
             id: id,
             symbol: symbol,
@@ -15,9 +13,6 @@ extension CoinInfo {
             rank: rank,
             date: date,
             price: price,
-            percentChange5m: history.percentChange(minutes: 5, currentPrice: price, at: date),
-            percentChange15m: history.percentChange(minutes: 15, currentPrice: price, at: date),
-            marketCapUSD: nil,
             volume24: volume24
         )
     }

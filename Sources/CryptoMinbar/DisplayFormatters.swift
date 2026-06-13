@@ -19,4 +19,9 @@ enum DisplayFormatters {
         formatter.maximumFractionDigits = 4
         return formatter
     }()
+
+    /// Signed percent number (no `%` suffix), e.g. "+0.42" / "-0.18", or "—".
+    static func percentString(_ value: Decimal) -> String {
+        percent.string(from: NSDecimalNumber(decimal: value)) ?? "—"
+    }
 }

@@ -8,8 +8,5 @@ struct BTCTicker: Equatable, Sendable {
     let rank: Int
     let date: Date
     let price: Decimal
-    let percentChange5m: Decimal?
-    let percentChange15m: Decimal?
-    let marketCapUSD: Decimal?
     let volume24: Decimal?
 }

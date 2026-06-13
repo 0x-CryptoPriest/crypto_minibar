@@ -4,16 +4,17 @@ import Testing
 
 @Suite("Hyperliquid configuration")
 struct HyperliquidConfigurationTests {
-    @Test("supported catalog is BTC/ETH/SOL")
-    func supportedCatalogIsBtcEthSol() {
-        #expect(CoinInfo.supportedSymbols.map(\.id) == ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    @Test("default fallback catalog is BTC/ETH/SOL")
+    func defaultCatalogIsBtcEthSol() {
+        #expect(CoinInfo.defaultSymbols.map(\.id) == ["BTC", "ETH", "SOL"])
     }
 
-    @Test("coins map to hyperliquid stream symbols")
-    func coinsMapToHyperliquidStreamSymbols() {
-        #expect(CoinInfo.bitcoin.hyperliquidSymbol == "BTC")
-        #expect(CoinInfo.ethereum.hyperliquidSymbol == "ETH")
-        #expect(CoinInfo.solana.hyperliquidSymbol == "SOL")
+    @Test("a coin's identity is its Hyperliquid name")
+    func coinIdentityIsHyperliquidName() {
+        let coin = CoinInfo.hyperliquid("kPEPE")
+        #expect(coin.id == "kPEPE")
+        #expect(coin.symbol == "kPEPE")
+        #expect(coin.hyperliquidSymbol == "kPEPE")
     }
 
     @Test("hyperliquid ignores subscription acknowledgements")

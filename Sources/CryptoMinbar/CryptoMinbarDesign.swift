@@ -1,14 +1,20 @@
 import SwiftUI
 
 enum CryptoMinbarDesign {
-    static let panelWidth: CGFloat = 340
-    static let panelSpacing: CGFloat = 14
-    static let cardSpacing: CGFloat = 12
-    static let cornerRadius: CGFloat = 22
-    static let compactCornerRadius: CGFloat = 14
-    static let contentPadding: CGFloat = 16
+    static let panelWidth: CGFloat = 320
+    static let sectionSpacing: CGFloat = 10
+    static let contentPadding: CGFloat = 14
+    static let cardCornerRadius: CGFloat = 12
+    static let compactCornerRadius: CGFloat = 10
 
-    static let accent = Color.orange
     static let positive = Color.green
     static let negative = Color.red
+    static let accent = Color.accentColor
+}
+
+extension View {
+    /// The standard card surface used by the popover sections.
+    func cardSurface(cornerRadius: CGFloat = CryptoMinbarDesign.cardCornerRadius) -> some View {
+        background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: cornerRadius))
+    }
 }

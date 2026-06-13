@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import ServiceManagement
 import UserNotifications
@@ -6,29 +7,22 @@ import UserNotifications
 @MainActor
 final class TickerViewModel: ObservableObject {
     @Published private(set) var ticker: BTCTicker?
-    @Published private(set) var coins: [CoinInfo] = CoinInfo.supportedSymbols
-    @Published private(set) var selectedCoin: CoinInfo = CoinInfo.supportedSymbols[0] {
-        didSet { updatePopoverLayoutState() }
-    }
+    @Published private(set) var coins: [CoinInfo] = CoinInfo.defaultSymbols
+    @Published private(set) var selectedCoin: CoinInfo = CoinInfo.defaultSymbols[0]
     @Published private(set) var lastUpdated: Date?
-    @Published private(set) var errorMessage: String? {
-        didSet { updatePopoverLayoutState() }
-    }
-    @Published private(set) var isRefreshing = false
-    @Published var isShowingAPISettings = false {
-        didSet { updatePopoverLayoutState() }
-    }
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var connectionState: ConnectionState = .connecting
+    @Published var isShowingSettings = false
     @Published private(set) var notificationStatusText = "Checking notifications..."
-    @Published private(set) var popoverLayoutState = PopoverLayoutState(
-        isShowingAPISettings: false,
-        selectedCoinAlertCount: 0,
-        hasErrorMessage: false
-    )
+    @Published private(set) var primaryWindow: ChangeWindow = .h1
+    @Published private(set) var secondaryWindow: ChangeWindow = .h24
+    @Published private(set) var primaryChange: Decimal?
+    @Published private(set) var secondaryChange: Decimal?
+    /// 24h of 5-minute candles backing the popover sparkline (same data as the
+    /// change baseline; reused so the chart costs no extra network).
+    @Published private(set) var chartCandles: [PriceCandle] = []
     @Published var alerts: [PriceAlert] {
-        didSet {
-            saveAlerts()
-            updatePopoverLayoutState()
-        }
+        didSet { saveAlerts() }
     }
     @Published var showChangeInBar: Bool {
         didSet { UserDefaults.standard.set(showChangeInBar, forKey: "showChangeInBar") }
@@ -53,37 +47,70 @@ final class TickerViewModel: ObservableObject {
     }
 
     private let streamProvider: any TickerStreamProvider
+    private let candleService: any CandleProviding
+    private let catalogService: any CoinCatalogProviding
     private var streamTask: Task<Void, Never>?
     private var connectionSetupTask: Task<Void, Never>?
     private var connectionRequestVersion = 0
+    private var streamFailureCount = 0
+    private var catalogTask: Task<Void, Never>?
     private var isUpdatingLaunchAtLogin = false
+    private var baseline = PriceBaseline()
+    private var baselineCoinID: String?
+    private var lastBaselineFetch: Date?
+    private var baselineTask: Task<Void, Never>?
+    private let tickSubject = PassthroughSubject<BTCTicker, Never>()
+    private var cancellables = Set<AnyCancellable>()
 
-    init(streamProvider: any TickerStreamProvider = HyperliquidWebSocketProvider()) {
+    init(
+        streamProvider: any TickerStreamProvider = HyperliquidWebSocketProvider(),
+        candleService: any CandleProviding = HyperliquidCandleService(),
+        catalogService: any CoinCatalogProviding = HyperliquidMetaService()
+    ) {
         self.streamProvider = streamProvider
+        self.candleService = candleService
+        self.catalogService = catalogService
         self.showChangeInBar = UserDefaults.standard.bool(forKey: "showChangeInBar")
         self.alerts = Self.loadAlerts()
-        self.coins = CoinInfo.supportedSymbols
-        self.selectedCoin = Self.storedCoin(in: CoinInfo.supportedSymbols)
+        self.coins = CoinInfo.defaultSymbols
+        self.selectedCoin = Self.storedCoin(in: CoinInfo.defaultSymbols)
+        self.primaryWindow = Self.storedWindow(forKey: Self.primaryWindowKey, default: .h1)
+        self.secondaryWindow = Self.storedWindow(forKey: Self.secondaryWindowKey, default: .h24)
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
-        updatePopoverLayoutState()
+
+        // Apply incoming ticks to UI state at most ~5x/sec (alerts still run on
+        // every raw tick in the stream loop, so no threshold crossing is missed).
+        tickSubject
+            .throttle(for: .milliseconds(200), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] tick in
+                self?.applyTick(tick)
+            }
+            .store(in: &cancellables)
     }
 
     deinit {
         streamTask?.cancel()
+        baselineTask?.cancel()
     }
 
     var statusTitle: String {
         guard let ticker else { return "\(selectedCoin.symbol) --" }
         let price = Self.priceFormatter.string(for: ticker.price) ?? "--"
-        guard showChangeInBar, let change = ticker.percentChange5m else {
+        guard showChangeInBar, let change = primaryChange else {
             return "\(ticker.symbol) \(price)"
         }
-        let formatted = DisplayFormatters.percent.string(from: NSDecimalNumber(decimal: change)) ?? "--"
-        let sign = change >= 0 ? "+" : ""
-        return "\(ticker.symbol) \(price) \(sign)\(formatted)%"
+        // `DisplayFormatters.percent` already prefixes "+" for non-negative
+        // values, so no manual sign is added here (that produced "++0.42%").
+        return "\(ticker.symbol) \(price) \(DisplayFormatters.percentString(change))%"
     }
 
     var feedSourceLabel: String { "Hyperliquid" }
+
+    /// The large headline price shown in the popover, formatted as USD currency.
+    var heroPriceText: String {
+        guard let ticker else { return "$ —" }
+        return Self.priceFormatter.string(for: ticker.price) ?? "—"
+    }
 
     func start() {
         if Self.canUseUserNotifications {
@@ -94,6 +121,8 @@ final class TickerViewModel: ObservableObject {
             notificationStatusText = "Notifications unavailable"
         }
         requestConnect()
+        refreshBaseline(force: true)
+        loadCatalog()
     }
 
     func stop() {
@@ -102,7 +131,21 @@ final class TickerViewModel: ObservableObject {
         connectionSetupTask = nil
         streamTask?.cancel()
         streamTask = nil
-        isRefreshing = false
+        baselineTask?.cancel()
+        baselineTask = nil
+        catalogTask?.cancel()
+        catalogTask = nil
+    }
+
+    /// Loads the full tradeable Hyperliquid universe to populate the coin picker.
+    private func loadCatalog() {
+        catalogTask?.cancel()
+        let service = catalogService
+        catalogTask = Task { [weak self] in
+            guard let names = try? await service.coins(), !names.isEmpty else { return }
+            guard let self, !Task.isCancelled else { return }
+            self.coins = names.map(CoinInfo.hyperliquid)
+        }
     }
 
     func selectCoin(id: String) {
@@ -120,12 +163,33 @@ final class TickerViewModel: ObservableObject {
         ticker = nil
         lastUpdated = nil
         errorMessage = nil
+        primaryChange = nil
+        secondaryChange = nil
+        chartCandles = []
+        baseline = PriceBaseline()
+        baselineCoinID = nil
         UserDefaults.standard.set(coin.id, forKey: Self.selectedCoinIDKey)
         requestConnect()
+        refreshBaseline(force: true)
+    }
+
+    func selectPrimaryWindow(_ window: ChangeWindow) {
+        guard window != primaryWindow else { return }
+        primaryWindow = window
+        UserDefaults.standard.set(window.rawValue, forKey: Self.primaryWindowKey)
+        recomputeChanges()
+    }
+
+    func selectSecondaryWindow(_ window: ChangeWindow) {
+        guard window != secondaryWindow else { return }
+        secondaryWindow = window
+        UserDefaults.standard.set(window.rawValue, forKey: Self.secondaryWindowKey)
+        recomputeChanges()
     }
 
     func refreshNow() async {
         requestConnect()
+        refreshBaseline(force: true)
     }
 
     func copyPriceToClipboard() {
@@ -134,8 +198,8 @@ final class TickerViewModel: ObservableObject {
         NSPasteboard.general.setString(statusTitle, forType: .string)
     }
 
-    func toggleAPISettings() {
-        isShowingAPISettings.toggle()
+    func toggleSettings() {
+        isShowingSettings.toggle()
     }
 
     func requestNotificationPermission() {
@@ -269,13 +333,68 @@ final class TickerViewModel: ObservableObject {
         if let previousTask {
             await previousTask.value
         }
-        isRefreshing = false
+    }
+
+    /// Applies a throttled tick to UI state. Guards against a late tick from a
+    /// previously-selected coin arriving after a switch.
+    private func applyTick(_ tick: BTCTicker) {
+        guard tick.id == selectedCoin.id else { return }
+        ticker = tick
+        lastUpdated = Date()
+        connectionState = .live
+        streamFailureCount = 0
+        errorMessage = nil
+        recomputeChanges()
+        refreshBaseline(force: false)
+    }
+
+    /// A stream end/error: pulse yellow while retrying, turn red after repeated
+    /// failures so the dot distinguishes "reconnecting" from "can't connect".
+    private func registerStreamInterruption() {
+        streamFailureCount += 1
+        connectionState = streamFailureCount >= Self.offlineThreshold ? .offline : .reconnecting
+    }
+
+    private func recomputeChanges() {
+        let now = Date()
+        let price = ticker?.price
+        primaryChange = price.flatMap { baseline.change(window: primaryWindow, currentPrice: $0, now: now) }
+        secondaryChange = price.flatMap { baseline.change(window: secondaryWindow, currentPrice: $0, now: now) }
+    }
+
+    /// Fetches the historical candle baseline for the selected coin. `force`
+    /// refetches immediately; otherwise it is skipped while the cached baseline
+    /// is still fresh, so it is safe to call on every tick.
+    private func refreshBaseline(force: Bool) {
+        let coinID = selectedCoin.id
+        if !force,
+           baselineCoinID == coinID,
+           let lastBaselineFetch,
+           Date().timeIntervalSince(lastBaselineFetch) < Self.baselineRefreshInterval {
+            return
+        }
+
+        baselineTask?.cancel()
+        let service = candleService
+        baselineTask = Task { [weak self] in
+            let candles = try? await service.candles(coinID: coinID)
+            guard let self, !Task.isCancelled, let candles else { return }
+            guard self.selectedCoin.id == coinID else { return }
+            self.baseline = PriceBaseline(candles: candles)
+            self.baselineCoinID = coinID
+            self.lastBaselineFetch = Date()
+            // Aggregate the fine 5m candles into hourly OHLC so the chart shows a
+            // readable number of candlesticks (~24) instead of ~288 slivers.
+            self.chartCandles = candles.bucketed(bySeconds: 3600)
+            self.recomputeChanges()
+        }
     }
 
     private func startStream(symbol: String) {
         let provider = streamProvider
         streamTask?.cancel()
-        isRefreshing = true
+        connectionState = .connecting
+        streamFailureCount = 0
         errorMessage = nil
         streamTask = Task { [weak self] in
             guard let self else { return }
@@ -286,23 +405,20 @@ final class TickerViewModel: ObservableObject {
                         guard self.selectedCoin.id == symbol else {
                             return
                         }
-                        self.ticker = tick
-                        self.lastUpdated = Date()
-                        self.isRefreshing = false
-                        self.errorMessage = nil
+                        // Alerts run on every raw tick so no crossing is missed;
+                        // UI state is updated on a throttled cadence via applyTick.
                         self.checkAlerts(price: tick.price, symbol: tick.id)
+                        self.tickSubject.send(tick)
                         delay = .seconds(1)
                     }
-                    self.isRefreshing = true
-                    self.errorMessage = "Reconnecting..."
+                    self.registerStreamInterruption()
                 } catch is CancellationError {
                     return
                 } catch {
                     guard self.selectedCoin.id == symbol else {
                         return
                     }
-                    self.isRefreshing = true
-                    self.errorMessage = "Reconnecting... (\(error.localizedDescription))"
+                    self.registerStreamInterruption()
                 }
                 try? await Task.sleep(for: delay)
                 delay = min(delay * 2, .seconds(60))
@@ -335,16 +451,8 @@ final class TickerViewModel: ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
 
-    private func updatePopoverLayoutState() {
-        popoverLayoutState = PopoverLayoutState(
-            isShowingAPISettings: isShowingAPISettings,
-            selectedCoinAlertCount: alerts.filter { $0.symbol == selectedCoin.id }.count,
-            hasErrorMessage: errorMessage != nil
-        )
-    }
-
     func displaySymbol(for symbolID: String) -> String {
-        CoinInfo.supportedSymbols.first(where: { $0.id == symbolID })?.symbol ?? symbolID
+        coins.first(where: { $0.id == symbolID })?.symbol ?? symbolID
     }
 
     func formatPrice(_ price: Decimal) -> String {
@@ -374,6 +482,14 @@ final class TickerViewModel: ObservableObject {
         return coins[0]
     }
 
+    private static func storedWindow(forKey key: String, default fallback: ChangeWindow) -> ChangeWindow {
+        guard let rawValue = UserDefaults.standard.string(forKey: key),
+              let window = ChangeWindow(rawValue: rawValue) else {
+            return fallback
+        }
+        return window
+    }
+
     private static func notificationStatusText(for status: UNAuthorizationStatus) -> String {
         switch status {
         case .notDetermined:
@@ -401,6 +517,10 @@ final class TickerViewModel: ObservableObject {
 
     private static let selectedCoinIDKey = "selectedCoinID"
     private static let priceAlertsKey = "priceAlerts"
+    private static let primaryWindowKey = "primaryChangeWindow"
+    private static let secondaryWindowKey = "secondaryChangeWindow"
+    private static let baselineRefreshInterval: TimeInterval = 5 * 60
+    private static let offlineThreshold = 4
     private static let canUseUserNotifications = Bundle.main.bundleURL.pathExtension == "app"
 
     private static let priceFormatter: NumberFormatter = {

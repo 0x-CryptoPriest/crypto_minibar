@@ -8,20 +8,28 @@ struct TrendPill: View {
         value < 0
     }
 
+    private var tint: Color {
+        isNegative ? CryptoMinbarDesign.negative : CryptoMinbarDesign.positive
+    }
+
     var body: some View {
-        Label("\(label) \(formattedValue)", systemImage: isNegative ? "arrow.down.right" : "arrow.up.right")
-            .font(.callout)
-            .monospacedDigit()
-            .foregroundStyle(isNegative ? CryptoMinbarDesign.negative : CryptoMinbarDesign.positive)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background((isNegative ? CryptoMinbarDesign.negative : CryptoMinbarDesign.positive).opacity(0.12), in: Capsule())
-            .accessibilityLabel("\(label) change \(formattedValue)")
+        HStack(spacing: 5) {
+            Image(systemName: isNegative ? "arrow.down.right" : "arrow.up.right")
+                .font(.caption.weight(.bold))
+            Text("\(formattedValue)%")
+                .monospacedDigit()
+            Text(label)
+                .foregroundStyle(.secondary)
+        }
+        .font(.callout)
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.12), in: Capsule())
+        .accessibilityLabel("\(label) change \(formattedValue) percent")
     }
 
     private var formattedValue: String {
-        let number = NSDecimalNumber(decimal: value)
-        let formatted = DisplayFormatters.percent.string(from: number) ?? "--"
-        return formatted
+        DisplayFormatters.percentString(value)
     }
 }

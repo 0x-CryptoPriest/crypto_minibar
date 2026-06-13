@@ -23,40 +23,20 @@ extension CoinInfo {
         case crypto = "Crypto"
     }
 
-    static let bitcoin = CoinInfo(
-        id: "BTCUSDT",
-        symbol: "BTC/USDT",
-        name: "Bitcoin/Tether",
-        nameid: "bitcoin-tether",
-        rank: 1,
-        market: .crypto,
-        hyperliquidSymbol: "BTC"
-    )
+    /// Builds a coin from a Hyperliquid universe name (the identity used for
+    /// subscribing, fetching candles, persistence, and display).
+    static func hyperliquid(_ name: String) -> CoinInfo {
+        CoinInfo(
+            id: name,
+            symbol: name,
+            name: name,
+            nameid: name.lowercased(),
+            rank: 0,
+            market: .crypto,
+            hyperliquidSymbol: name
+        )
+    }
 
-    static let ethereum = CoinInfo(
-        id: "ETHUSDT",
-        symbol: "ETH/USDT",
-        name: "Ethereum/Tether",
-        nameid: "ethereum-tether",
-        rank: 2,
-        market: .crypto,
-        hyperliquidSymbol: "ETH"
-    )
-
-    static let solana = CoinInfo(
-        id: "SOLUSDT",
-        symbol: "SOL/USDT",
-        name: "Solana/Tether",
-        nameid: "solana-tether",
-        rank: 3,
-        market: .crypto,
-        hyperliquidSymbol: "SOL"
-    )
-
-    /// The full catalog offered by the app. Hyperliquid is the only data source.
-    static let supportedSymbols: [CoinInfo] = [
-        .bitcoin,
-        .ethereum,
-        .solana
-    ]
+    /// Built-in fallback shown before the full universe loads (and offline).
+    static let defaultSymbols: [CoinInfo] = ["BTC", "ETH", "SOL"].map(CoinInfo.hyperliquid)
 }

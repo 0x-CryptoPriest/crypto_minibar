@@ -13,16 +13,16 @@ struct HyperliquidWebSocketProvider: TickerStreamProvider {
 
     func streamTicker(symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
         AsyncThrowingStream { continuation in
-            guard let coin = CoinInfo.supportedSymbols.first(where: { $0.id == symbol }),
-                  let url = URL(string: "wss://api.hyperliquid.xyz/ws") else {
+            // `symbol` is the Hyperliquid coin name (e.g. "BTC", "kPEPE").
+            guard let url = URL(string: "wss://api.hyperliquid.xyz/ws") else {
                 continuation.finish(throwing: ExchangeFeedError.unsupportedSymbol(exchange: "Hyperliquid", symbol: symbol))
                 return
             }
 
-            let streamSymbol = coin.hyperliquidSymbol
+            let coin = CoinInfo.hyperliquid(symbol)
+            let streamSymbol = symbol
             let webSocket = session.webSocketTask(with: url)
             let task = Task {
-                var history = PriceHistory()
                 webSocket.resume()
 
                 do {
@@ -38,13 +38,7 @@ struct HyperliquidWebSocketProvider: TickerStreamProvider {
                               let tick = try decodeTrade(from: text, expectedSymbol: streamSymbol) else {
                             continue
                         }
-                        history = history.appending(price: tick.price, at: tick.date)
-                        continuation.yield(coin.liveTicker(
-                            price: tick.price,
-                            date: tick.date,
-                            history: history,
-                            volume24: nil
-                        ))
+                        continuation.yield(coin.liveTicker(price: tick.price, date: tick.date, volume24: nil))
                     }
                 } catch {
                     continuation.finish(throwing: error)

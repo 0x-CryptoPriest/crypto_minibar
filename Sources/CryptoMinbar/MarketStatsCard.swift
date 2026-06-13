@@ -1,52 +1,74 @@
 import SwiftUI
 
 struct MarketStatsCard: View {
-    let ticker: BTCTicker?
-    let lastUpdated: Date?
+    @ObservedObject var viewModel: TickerViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                StatTile(title: "5min", value: percentText(ticker?.percentChange5m), tone: tone(for: ticker?.percentChange5m))
-                StatTile(title: "15min", value: percentText(ticker?.percentChange15m), tone: tone(for: ticker?.percentChange15m))
+            HStack(spacing: CryptoMinbarDesign.sectionSpacing) {
+                windowTile(
+                    window: viewModel.primaryWindow,
+                    change: viewModel.primaryChange,
+                    select: viewModel.selectPrimaryWindow
+                )
+                windowTile(
+                    window: viewModel.secondaryWindow,
+                    change: viewModel.secondaryChange,
+                    select: viewModel.selectSecondaryWindow
+                )
             }
 
-            HStack {
-                Label("Runtime tick history · 20min memory", systemImage: "clock.arrow.circlepath")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
+            HStack(spacing: 6) {
+                Image(systemName: "clock.arrow.circlepath")
+                Text("Change from Hyperliquid history")
                 Spacer()
-
-                Text(updatedText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                Text("Updated \(updatedText)")
+                    .monospacedDigit()
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .frame(minHeight: 68, alignment: .topLeading)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func windowTile(
+        window: ChangeWindow,
+        change: Decimal?,
+        select: @escaping (ChangeWindow) -> Void
+    ) -> some View {
+        Menu {
+            ForEach(ChangeWindow.allCases) { option in
+                Button {
+                    select(option)
+                } label: {
+                    if option == window {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            StatTile(title: window.label, value: percentText(change), tone: StatTile.Tone(for: change))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .frame(maxWidth: .infinity)
+        .help("Choose the look-back window")
     }
 
     private var updatedText: String {
-        guard let lastUpdated else {
-            return "--"
+        guard let lastUpdated = viewModel.lastUpdated else {
+            return "—"
         }
         return lastUpdated.formatted(date: .omitted, time: .standard)
     }
 
     private func percentText(_ value: Decimal?) -> String {
         guard let value else {
-            return "--"
+            return "—"
         }
-        let number = NSDecimalNumber(decimal: value)
-        let formatted = DisplayFormatters.percent.string(from: number) ?? "--"
-        return "\(formatted)%"
-    }
-
-    private func tone(for value: Decimal?) -> StatTile.Tone {
-        guard let value else {
-            return .neutral
-        }
-        return value < 0 ? .negative : .positive
+        return "\(DisplayFormatters.percentString(value))%"
     }
 }

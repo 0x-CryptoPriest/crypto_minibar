@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AlertsCard: View {
     @ObservedObject var viewModel: TickerViewModel
-    @State private var isExpanded = true
+    @State private var isExpanded = false
     @State private var thresholdInput = ""
     @State private var direction: PriceAlert.Direction = .above
 
@@ -16,22 +16,25 @@ struct AlertsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button(action: { isExpanded.toggle() }) {
-                HStack {
-                    Label("Price Alerts", systemImage: "bell.badge")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "bell.badge")
+                    Text("Price Alerts")
+                    if !selectedCoinAlerts.isEmpty {
+                        Text("\(selectedCoinAlerts.count)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
-
-                    Text("\(selectedCoinAlerts.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: "chevron.right")
                         .font(.caption2)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .foregroundStyle(.secondary)
                 }
+                .font(.subheadline)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -55,7 +58,7 @@ struct AlertsCard: View {
             }
         }
         .padding(12)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: CryptoMinbarDesign.compactCornerRadius))
+        .cardSurface(cornerRadius: CryptoMinbarDesign.compactCornerRadius)
     }
 
     private var addAlertRow: some View {
@@ -66,11 +69,12 @@ struct AlertsCard: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 84)
+            .fixedSize()
 
             TextField("Price", text: $thresholdInput)
                 .textFieldStyle(.roundedBorder)
                 .monospacedDigit()
+                .onSubmit(addAlert)
 
             Button(action: addAlert) {
                 Image(systemName: "plus")
@@ -86,17 +90,15 @@ struct AlertsCard: View {
             Image(systemName: alert.isTriggered ? "checkmark.circle.fill" : "bell.fill")
                 .foregroundStyle(alert.isTriggered ? CryptoMinbarDesign.positive : CryptoMinbarDesign.accent)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(viewModel.displaySymbol(for: alert.symbol)) \(alert.direction.label.lowercased()) \(viewModel.formatPrice(alert.threshold))")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(alert.isTriggered ? .secondary : .primary)
+            Text("\(alert.direction.label) \(viewModel.formatPrice(alert.threshold))")
+                .font(.callout)
+                .monospacedDigit()
+                .foregroundStyle(alert.isTriggered ? .secondary : .primary)
 
-                if alert.isTriggered {
-                    Text("Triggered")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+            if alert.isTriggered {
+                Text("triggered")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -106,6 +108,7 @@ struct AlertsCard: View {
                     Image(systemName: "arrow.counterclockwise")
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .help("Reset alert")
             }
 
@@ -113,9 +116,9 @@ struct AlertsCard: View {
                 Image(systemName: "trash")
             }
             .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
             .help("Delete alert")
         }
-        .opacity(alert.isTriggered ? 0.72 : 1)
     }
 
     private func addAlert() {

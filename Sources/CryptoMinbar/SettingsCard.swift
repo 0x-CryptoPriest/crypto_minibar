@@ -5,70 +5,41 @@ struct SettingsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Hyperliquid · Public feed", systemImage: "bolt.horizontal.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(CryptoMinbarDesign.positive)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+            Text("Settings")
+                .font(.subheadline.weight(.semibold))
 
-                Spacer()
-
-                Text("Public")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Label("Public websocket source. No API key required.", systemImage: "bolt.badge.checkmark")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 10) {
-                Button("Reconnect", systemImage: "arrow.clockwise") {
-                    Task { await viewModel.refreshNow() }
-                }
-                .buttonStyle(.borderedProminent)
-
-                Spacer()
-            }
+            settingToggle("Show change in menu bar", isOn: $viewModel.showChangeInBar)
+            settingToggle("Launch at login", isOn: $viewModel.launchAtLogin)
 
             Divider()
 
-            Toggle(isOn: $viewModel.showChangeInBar) {
-                Label("Show 5min % in menu bar", systemImage: "percent")
-                    .font(.caption)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            Toggle(isOn: $viewModel.launchAtLogin) {
-                Label("Launch at login", systemImage: "poweron")
-                    .font(.caption)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            Divider()
-
-            HStack {
-                Label(viewModel.notificationStatusText, systemImage: "bell.badge")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
+            HStack(spacing: 6) {
+                Image(systemName: "bell.badge")
+                Text(viewModel.notificationStatusText)
                 Spacer()
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
-            HStack(spacing: 10) {
-                Button("Enable/Test", systemImage: "bell.fill", action: viewModel.requestNotificationPermission)
-                    .buttonStyle(.bordered)
-
-                Button("Settings", systemImage: "gearshape.fill", action: viewModel.openNotificationSettings)
-                    .buttonStyle(.bordered)
-
+            HStack(spacing: 8) {
+                Button("Enable / Test", systemImage: "bell.fill", action: viewModel.requestNotificationPermission)
+                Button("System Settings", systemImage: "gearshape", action: viewModel.openNotificationSettings)
                 Spacer()
             }
+            .controlSize(.small)
+            .buttonStyle(.bordered)
         }
-        .padding(12)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: CryptoMinbarDesign.compactCornerRadius))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(CryptoMinbarDesign.contentPadding)
+        .cardSurface()
+    }
+
+    private func settingToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(title)
+                .font(.callout)
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
     }
 }

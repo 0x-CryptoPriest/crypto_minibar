@@ -1,68 +1,77 @@
-import AppKit
 import SwiftUI
 
 struct PriceHeroCard: View {
-    let ticker: BTCTicker?
     let selectedCoin: CoinInfo
     let feedSourceLabel: String
-    let statusTitle: String
-    let isRefreshing: Bool
+    let priceText: String
+    let ticker: BTCTicker?
+    let change: Decimal?
+    let changeLabel: String
+    let connectionState: ConnectionState
     let copyPrice: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: CryptoMinbarDesign.cardSpacing) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label(selectedCoin.name, systemImage: selectedCoin.symbolName)
-                        .font(.headline)
-                        .labelStyle(.titleAndIcon)
-                        .symbolRenderingMode(.hierarchical)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: selectedCoin.symbolName)
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(CryptoMinbarDesign.accent)
 
-                    Text("\(selectedCoin.symbol) · \(selectedCoin.market.rawValue) · \(feedSourceLabel)")
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(selectedCoin.name)
+                        .font(.headline)
+                        .lineLimit(1)
+
+                    Text("\(selectedCoin.symbol) · \(feedSourceLabel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
+
+                ConnectionStatusDot(state: connectionState)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(priceText)
+                    .font(.system(size: 32, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: priceText)
+                    .accessibilityLabel("\(selectedCoin.name) price \(priceText)")
+
+                Spacer(minLength: 4)
 
                 Button(action: copyPrice) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "square.on.square")
+                        .font(.body)
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .help("Copy price to clipboard")
                 .opacity(ticker != nil ? 1 : 0.3)
-
-                RefreshBadge(isRefreshing: isRefreshing)
+                .disabled(ticker == nil)
             }
 
-            Text(statusTitle)
-                .font(.system(.largeTitle, design: .rounded).bold())
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .accessibilityLabel("\(selectedCoin.name) price \(statusTitle)")
-
-            if let ticker, let change = ticker.percentChange5m {
-                TrendPill(value: change, label: "5min")
-            } else {
-                Text("Waiting for the next quote")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+            Group {
+                if let change {
+                    TrendPill(value: change, label: changeLabel)
+                } else {
+                    Label("Waiting for the next quote", systemImage: "clock")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             }
+            // Fixed height so the card doesn't grow when the change pill replaces
+            // the placeholder (which would shift the popover as data loads).
+            .frame(height: 30, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(CryptoMinbarDesign.contentPadding)
-        .frame(minHeight: 148, alignment: .topLeading)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background {
-            RoundedRectangle(cornerRadius: CryptoMinbarDesign.cornerRadius)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: CryptoMinbarDesign.cornerRadius)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                )
-        }
-        .clipShape(RoundedRectangle(cornerRadius: CryptoMinbarDesign.cornerRadius))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
     }
 }
