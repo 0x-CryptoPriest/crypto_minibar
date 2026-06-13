@@ -1,5 +1,9 @@
 import Foundation
 
+protocol TickerStreamProvider: Sendable {
+    func streamTicker(symbol: String) -> AsyncThrowingStream<BTCTicker, Error>
+}
+
 struct HyperliquidWebSocketProvider: TickerStreamProvider {
     private let session: URLSession
 
@@ -7,15 +11,15 @@ struct HyperliquidWebSocketProvider: TickerStreamProvider {
         self.session = session
     }
 
-    func streamTicker(token: String, symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
+    func streamTicker(symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
         AsyncThrowingStream { continuation in
-            guard let coin = StandardFeedProvider.hyperliquid.supportedCoins.first(where: { $0.id == symbol }),
-                  let streamSymbol = StandardFeedProvider.hyperliquid.streamSymbol(for: coin),
+            guard let coin = CoinInfo.supportedSymbols.first(where: { $0.id == symbol }),
                   let url = URL(string: "wss://api.hyperliquid.xyz/ws") else {
-                continuation.finish(throwing: HyperliquidFeedError.unsupportedSymbol(symbol))
+                continuation.finish(throwing: ExchangeFeedError.unsupportedSymbol(exchange: "Hyperliquid", symbol: symbol))
                 return
             }
 
+            let streamSymbol = coin.hyperliquidSymbol
             let webSocket = session.webSocketTask(with: url)
             let task = Task {
                 var history = PriceHistory()
@@ -61,7 +65,7 @@ struct HyperliquidWebSocketProvider: TickerStreamProvider {
         )
         let data = try JSONEncoder().encode(payload)
         guard let text = String(data: data, encoding: .utf8) else {
-            throw HyperliquidFeedError.encodingFailed
+            throw ExchangeFeedError.encodingFailed(exchange: "Hyperliquid")
         }
         try await webSocket.send(.string(text))
     }
@@ -72,9 +76,13 @@ struct HyperliquidWebSocketProvider: TickerStreamProvider {
 }
 
 enum HyperliquidTradeDecoder {
+    private static let decoder = JSONDecoder()
+
     static func decodeTrade(from text: String, expectedSymbol: String) throws -> HyperliquidTrade? {
         let data = Data(text.utf8)
-        let decoder = JSONDecoder()
+        // Decode the channel first so non-trade frames (e.g. subscription
+        // acknowledgements, whose `data` is an object not an array) are skipped
+        // before attempting the stricter trade decode.
         let envelope = try decoder.decode(HyperliquidEnvelope.self, from: data)
         guard envelope.channel == "trades" else {
             return nil
@@ -83,12 +91,11 @@ enum HyperliquidTradeDecoder {
         let message = try decoder.decode(HyperliquidTradesMessage.self, from: data)
         guard let trade = message.data.first,
               trade.coin == expectedSymbol,
-              let price = Decimal(string: trade.price, locale: Locale(identifier: "en_US_POSIX")) else {
+              let price = Decimal(exchangeString: trade.price) else {
             return nil
         }
 
-        let date = Date(timeIntervalSince1970: TimeInterval(trade.time) / 1_000)
-        return HyperliquidTrade(price: price, date: date)
+        return HyperliquidTrade(price: price, date: Date(exchangeMilliseconds: Double(trade.time)))
     }
 }
 
@@ -126,18 +133,4 @@ private struct HyperliquidTradeData: Decodable {
 struct HyperliquidTrade: Equatable, Sendable {
     let price: Decimal
     let date: Date
-}
-
-enum HyperliquidFeedError: LocalizedError {
-    case encodingFailed
-    case unsupportedSymbol(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .encodingFailed:
-            "Failed to encode Hyperliquid websocket request."
-        case .unsupportedSymbol(let symbol):
-            "Hyperliquid public websocket does not expose \(symbol) in this build."
-        }
-    }
 }

@@ -6,26 +6,18 @@ import UserNotifications
 @MainActor
 final class TickerViewModel: ObservableObject {
     @Published private(set) var ticker: BTCTicker?
-    @Published private(set) var coins: [CoinInfo] = CoinInfo.allTickSymbols
-    @Published private(set) var selectedCoin: CoinInfo = CoinInfo.allTickSymbols[0] {
+    @Published private(set) var coins: [CoinInfo] = CoinInfo.supportedSymbols
+    @Published private(set) var selectedCoin: CoinInfo = CoinInfo.supportedSymbols[0] {
         didSet { updatePopoverLayoutState() }
     }
-    @Published private(set) var feedMode: FeedMode = .standard {
-        didSet { updatePopoverLayoutState() }
-    }
-    @Published private(set) var standardFeedProvider: StandardFeedProvider = .allTick
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var errorMessage: String? {
         didSet { updatePopoverLayoutState() }
     }
     @Published private(set) var isRefreshing = false
-    @Published var standardAPIKeyInput = ""
-    @Published var premiumUserTokenInput = ""
     @Published var isShowingAPISettings = false {
         didSet { updatePopoverLayoutState() }
     }
-    @Published private(set) var hasSavedStandardAPIKey = false
-    @Published private(set) var hasSavedPremiumUserToken = false
     @Published private(set) var notificationStatusText = "Checking notifications..."
     @Published private(set) var popoverLayoutState = PopoverLayoutState(
         isShowingAPISettings: false,
@@ -60,57 +52,19 @@ final class TickerViewModel: ObservableObject {
         }
     }
 
-    private let standardStreamProviderFactory: @Sendable (StandardFeedProvider) -> any TickerStreamProvider
-    private let premiumStreamProviderFactory: @Sendable (URL) -> any TickerStreamProvider
-    private let standardTokenStore: any AllTickTokenStoring
-    private let premiumTokenStore: any PremiumUserTokenStoring
+    private let streamProvider: any TickerStreamProvider
     private var streamTask: Task<Void, Never>?
     private var connectionSetupTask: Task<Void, Never>?
     private var connectionRequestVersion = 0
     private var isUpdatingLaunchAtLogin = false
 
-    init(
-        streamProvider: (any TickerStreamProvider)? = nil,
-        standardStreamProviderFactory: @escaping @Sendable (StandardFeedProvider) -> any TickerStreamProvider = {
-            switch $0 {
-            case .allTick:
-                AllTickWebSocketProvider()
-            case .binance:
-                BinanceWebSocketProvider()
-            case .okx:
-                OKXWebSocketProvider()
-            case .hyperliquid:
-                HyperliquidWebSocketProvider()
-            }
-        },
-        premiumStreamProviderFactory: @escaping @Sendable (URL) -> any TickerStreamProvider = {
-            PremiumCentrifugoWebSocketProvider(feedURL: $0)
-        },
-        tokenStore: any AllTickTokenStoring = AllTickTokenStore(),
-        premiumTokenStore: any PremiumUserTokenStoring = PremiumUserTokenStore()
-    ) {
-        let resolvedStandardFactory: @Sendable (StandardFeedProvider) -> any TickerStreamProvider
-        if let streamProvider {
-            resolvedStandardFactory = { _ in streamProvider }
-        } else {
-            resolvedStandardFactory = standardStreamProviderFactory
-        }
-        self.standardStreamProviderFactory = resolvedStandardFactory
-        self.premiumStreamProviderFactory = premiumStreamProviderFactory
-        self.standardTokenStore = tokenStore
-        self.premiumTokenStore = premiumTokenStore
+    init(streamProvider: any TickerStreamProvider = HyperliquidWebSocketProvider()) {
+        self.streamProvider = streamProvider
         self.showChangeInBar = UserDefaults.standard.bool(forKey: "showChangeInBar")
         self.alerts = Self.loadAlerts()
-        let storedMode = Self.storedFeedMode()
-        let storedStandardProvider = Self.storedStandardFeedProvider()
-        let storedCoins = Self.coins(for: storedMode, standardProvider: storedStandardProvider)
-        self.feedMode = storedMode
-        self.standardFeedProvider = storedStandardProvider
-        self.coins = storedCoins
-        self.selectedCoin = Self.storedCoin(for: storedMode, standardProvider: storedStandardProvider, in: storedCoins)
-        UserDefaults.standard.removeObject(forKey: Self.premiumFeedURLKey)
+        self.coins = CoinInfo.supportedSymbols
+        self.selectedCoin = Self.storedCoin(in: CoinInfo.supportedSymbols)
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
-        updateSavedCredentialState()
         updatePopoverLayoutState()
     }
 
@@ -129,17 +83,9 @@ final class TickerViewModel: ObservableObject {
         return "\(ticker.symbol) \(price) \(sign)\(formatted)%"
     }
 
-    var feedSourceLabel: String {
-        switch feedMode {
-        case .standard:
-            standardFeedProvider.sourceLabel
-        case .premium:
-            feedMode.sourceLabel
-        }
-    }
+    var feedSourceLabel: String { "Hyperliquid" }
 
     func start() {
-        updateSavedCredentialState()
         if Self.canUseUserNotifications {
             Task { [weak self] in
                 await self?.refreshNotificationStatus()
@@ -147,7 +93,7 @@ final class TickerViewModel: ObservableObject {
         } else {
             notificationStatusText = "Notifications unavailable"
         }
-        requestConnectWithSavedToken()
+        requestConnect()
     }
 
     func stop() {
@@ -157,48 +103,6 @@ final class TickerViewModel: ObservableObject {
         streamTask?.cancel()
         streamTask = nil
         isRefreshing = false
-    }
-
-    func selectFeedMode(_ mode: FeedMode) {
-        guard mode != feedMode else {
-            return
-        }
-        UserDefaults.standard.set(
-            selectedCoin.id,
-            forKey: Self.selectedCoinIDKey(for: feedMode, standardProvider: standardFeedProvider)
-        )
-        feedMode = mode
-        UserDefaults.standard.set(mode.rawValue, forKey: Self.feedModeKey)
-        coins = Self.coins(for: mode, standardProvider: standardFeedProvider)
-        selectedCoin = Self.storedCoin(for: mode, standardProvider: standardFeedProvider, in: coins)
-        ticker = nil
-        lastUpdated = nil
-        errorMessage = nil
-        requestConnectWithSavedToken()
-    }
-
-    func selectStandardFeedProvider(_ provider: StandardFeedProvider) {
-        guard provider != standardFeedProvider else {
-            return
-        }
-
-        if feedMode == .standard {
-            UserDefaults.standard.set(
-                selectedCoin.id,
-                forKey: Self.selectedCoinIDKey(for: .standard, standardProvider: standardFeedProvider)
-            )
-        }
-        standardFeedProvider = provider
-        UserDefaults.standard.set(provider.rawValue, forKey: Self.standardFeedProviderKey)
-
-        if feedMode == .standard {
-            coins = Self.coins(for: .standard, standardProvider: provider)
-            selectedCoin = Self.storedCoin(for: .standard, standardProvider: provider, in: coins)
-            ticker = nil
-            lastUpdated = nil
-            errorMessage = nil
-            requestConnectWithSavedToken()
-        }
     }
 
     func selectCoin(id: String) {
@@ -216,103 +120,18 @@ final class TickerViewModel: ObservableObject {
         ticker = nil
         lastUpdated = nil
         errorMessage = nil
-        UserDefaults.standard.set(
-            coin.id,
-            forKey: Self.selectedCoinIDKey(for: feedMode, standardProvider: standardFeedProvider)
-        )
-        guard currentStoredToken(for: feedMode, standardProvider: standardFeedProvider) != nil else {
-            return
-        }
-        requestConnectWithSavedToken()
+        UserDefaults.standard.set(coin.id, forKey: Self.selectedCoinIDKey)
+        requestConnect()
     }
 
     func refreshNow() async {
-        requestConnectWithSavedToken()
+        requestConnect()
     }
 
     func copyPriceToClipboard() {
         guard ticker != nil else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(statusTitle, forType: .string)
-    }
-
-    func saveStandardAPIKey() {
-        let token = standardAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else {
-            errorMessage = "Enter a Standard AllTick API key first."
-            return
-        }
-        do {
-            try standardTokenStore.saveToken(token)
-            standardAPIKeyInput = ""
-            hasSavedStandardAPIKey = true
-            isShowingAPISettings = false
-            errorMessage = nil
-            if feedMode == .standard {
-                requestConnectWithSavedToken()
-            } else {
-                selectFeedMode(.standard)
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func clearStandardAPIKey() {
-        do {
-            try standardTokenStore.deleteToken()
-            standardAPIKeyInput = ""
-            hasSavedStandardAPIKey = false
-            if feedMode == .standard {
-                stop()
-                ticker = nil
-                lastUpdated = nil
-                errorMessage = "Standard API key removed. Enter a new key to reconnect."
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func savePremiumCredentials() {
-        let token = premiumUserTokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else {
-            errorMessage = "Enter a Premium user token first."
-            return
-        }
-
-        do {
-            try premiumTokenStore.saveToken(token)
-            UserDefaults.standard.removeObject(forKey: Self.premiumFeedURLKey)
-            premiumUserTokenInput = ""
-            hasSavedPremiumUserToken = true
-            isShowingAPISettings = false
-            errorMessage = nil
-            if feedMode == .premium {
-                requestConnectWithSavedToken()
-            } else {
-                selectFeedMode(.premium)
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func clearPremiumCredentials() {
-        do {
-            try premiumTokenStore.deleteToken()
-            UserDefaults.standard.removeObject(forKey: Self.premiumFeedURLKey)
-            premiumUserTokenInput = ""
-            hasSavedPremiumUserToken = false
-            if feedMode == .premium {
-                stop()
-                ticker = nil
-                lastUpdated = nil
-                errorMessage = "Premium credentials removed. Enter a user token to reconnect."
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
     }
 
     func toggleAPISettings() {
@@ -422,69 +241,25 @@ final class TickerViewModel: ObservableObject {
         alerts[index].isTriggered = false
     }
 
-    private func requestConnectWithSavedToken() {
+    private func requestConnect() {
         connectionRequestVersion += 1
         let version = connectionRequestVersion
-        let mode = feedMode
-        let standardProvider = standardFeedProvider
+        let symbol = selectedCoin.id
         let previousTask = connectionSetupTask
         connectionSetupTask = Task { [weak self] in
             await previousTask?.value
             guard let self else { return }
             guard !Task.isCancelled else { return }
-            await self.connectWithSavedToken(
-                mode: mode,
-                standardProvider: standardProvider,
-                version: version
-            )
+            await self.connect(symbol: symbol, version: version)
         }
     }
 
-    private func connectWithSavedToken(
-        mode: FeedMode,
-        standardProvider: StandardFeedProvider,
-        version: Int
-    ) async {
-        guard feedMode == mode else {
-            return
-        }
-        guard mode != .standard || standardFeedProvider == standardProvider else {
-            return
-        }
-        guard let token = currentStoredToken(for: mode, standardProvider: standardProvider) else {
-            await stopCurrentStream()
-            guard connectionRequestVersion == version else {
-                return
-            }
-            updateSavedCredentialState()
-            errorMessage = missingCredentialMessage(for: mode, standardProvider: standardProvider)
-            return
-        }
-        await connect(
-            token: token,
-            symbol: selectedCoin.id,
-            mode: mode,
-            standardProvider: standardProvider,
-            version: version
-        )
-    }
-
-    private func connect(
-        token: String,
-        symbol: String,
-        mode: FeedMode,
-        standardProvider: StandardFeedProvider,
-        version: Int
-    ) async {
+    private func connect(symbol: String, version: Int) async {
         await stopCurrentStream()
-        guard connectionRequestVersion == version, feedMode == mode, !Task.isCancelled else {
+        guard connectionRequestVersion == version, selectedCoin.id == symbol, !Task.isCancelled else {
             return
         }
-        guard mode != .standard || self.standardFeedProvider == standardProvider else {
-            return
-        }
-        updateSavedCredentialState()
-        startStream(token: token, symbol: symbol, mode: mode, standardProvider: standardProvider)
+        startStream(symbol: symbol)
     }
 
     private func stopCurrentStream() async {
@@ -497,16 +272,8 @@ final class TickerViewModel: ObservableObject {
         isRefreshing = false
     }
 
-    private func startStream(
-        token: String,
-        symbol: String,
-        mode: FeedMode,
-        standardProvider: StandardFeedProvider
-    ) {
-        guard let provider = streamProvider(for: mode, standardProvider: standardProvider) else {
-            return
-        }
-
+    private func startStream(symbol: String) {
+        let provider = streamProvider
         streamTask?.cancel()
         isRefreshing = true
         errorMessage = nil
@@ -515,11 +282,8 @@ final class TickerViewModel: ObservableObject {
             var delay: Duration = .seconds(1)
             while !Task.isCancelled {
                 do {
-                    for try await tick in provider.streamTicker(token: token, symbol: symbol) {
-                        guard self.feedMode == mode, self.selectedCoin.id == symbol else {
-                            return
-                        }
-                        guard mode != .standard || self.standardFeedProvider == standardProvider else {
+                    for try await tick in provider.streamTicker(symbol: symbol) {
+                        guard self.selectedCoin.id == symbol else {
                             return
                         }
                         self.ticker = tick
@@ -534,10 +298,7 @@ final class TickerViewModel: ObservableObject {
                 } catch is CancellationError {
                     return
                 } catch {
-                    guard self.feedMode == mode, self.selectedCoin.id == symbol else {
-                        return
-                    }
-                    guard mode != .standard || self.standardFeedProvider == standardProvider else {
+                    guard self.selectedCoin.id == symbol else {
                         return
                     }
                     self.isRefreshing = true
@@ -547,41 +308,6 @@ final class TickerViewModel: ObservableObject {
                 delay = min(delay * 2, .seconds(60))
             }
         }
-    }
-
-    private func streamProvider(
-        for mode: FeedMode,
-        standardProvider: StandardFeedProvider
-    ) -> (any TickerStreamProvider)? {
-        switch mode {
-        case .standard:
-            return standardStreamProviderFactory(standardProvider)
-        case .premium:
-            return premiumStreamProviderFactory(Self.defaultPremiumFeedURL)
-        }
-    }
-
-    private func currentStoredToken(for mode: FeedMode, standardProvider: StandardFeedProvider) -> String? {
-        switch mode {
-        case .standard:
-            return standardProvider.requiresToken ? standardTokenStore.readToken() : ""
-        case .premium:
-            return premiumTokenStore.readToken()
-        }
-    }
-
-    private func missingCredentialMessage(for mode: FeedMode, standardProvider: StandardFeedProvider) -> String {
-        switch mode {
-        case .standard:
-            return "Enter an AllTick API key to start \(selectedCoin.symbol) live quotes."
-        case .premium:
-            return "Enter a Premium user token to start \(selectedCoin.symbol) live quotes."
-        }
-    }
-
-    private func updateSavedCredentialState() {
-        hasSavedStandardAPIKey = standardTokenStore.readToken() != nil
-        hasSavedPremiumUserToken = premiumTokenStore.readToken() != nil
     }
 
     private func checkAlerts(price: Decimal, symbol: String) {
@@ -618,7 +344,7 @@ final class TickerViewModel: ObservableObject {
     }
 
     func displaySymbol(for symbolID: String) -> String {
-        Self.allKnownCoins.first(where: { $0.id == symbolID })?.symbol ?? symbolID
+        CoinInfo.supportedSymbols.first(where: { $0.id == symbolID })?.symbol ?? symbolID
     }
 
     func formatPrice(_ price: Decimal) -> String {
@@ -640,57 +366,12 @@ final class TickerViewModel: ObservableObject {
         return alerts
     }
 
-    private static func storedFeedMode() -> FeedMode {
-        guard let rawValue = UserDefaults.standard.string(forKey: feedModeKey),
-              let mode = FeedMode(rawValue: rawValue) else {
-            return .standard
-        }
-        return mode
-    }
-
-    private static func coins(for mode: FeedMode, standardProvider: StandardFeedProvider) -> [CoinInfo] {
-        switch mode {
-        case .standard:
-            return standardProvider.supportedCoins
-        case .premium:
-            return CoinInfo.premiumSymbols
-        }
-    }
-
-    private static func storedCoin(
-        for mode: FeedMode,
-        standardProvider: StandardFeedProvider,
-        in coins: [CoinInfo]
-    ) -> CoinInfo {
-        if let selectedCoinID = UserDefaults.standard.string(
-            forKey: selectedCoinIDKey(for: mode, standardProvider: standardProvider)
-        ),
+    private static func storedCoin(in coins: [CoinInfo]) -> CoinInfo {
+        if let selectedCoinID = UserDefaults.standard.string(forKey: selectedCoinIDKey),
            let storedCoin = coins.first(where: { $0.id == selectedCoinID }) {
             return storedCoin
         }
-        if mode == .standard, standardProvider == .allTick,
-           let legacySelectedCoinID = UserDefaults.standard.string(forKey: "selectedCoinID"),
-           let storedCoin = coins.first(where: { $0.id == legacySelectedCoinID }) {
-            return storedCoin
-        }
         return coins[0]
-    }
-
-    private static func selectedCoinIDKey(for mode: FeedMode, standardProvider: StandardFeedProvider) -> String {
-        switch mode {
-        case .standard:
-            return "selectedStandardCoinID.\(standardProvider.rawValue)"
-        case .premium:
-            return "selectedPremiumCoinID"
-        }
-    }
-
-    private static func storedStandardFeedProvider() -> StandardFeedProvider {
-        guard let rawValue = UserDefaults.standard.string(forKey: standardFeedProviderKey),
-              let provider = StandardFeedProvider(rawValue: rawValue) else {
-            return .allTick
-        }
-        return provider
     }
 
     private static func notificationStatusText(for status: UNAuthorizationStatus) -> String {
@@ -718,13 +399,9 @@ final class TickerViewModel: ObservableObject {
         }
     }
 
-    private static let feedModeKey = "feedMode"
-    private static let standardFeedProviderKey = "standardFeedProvider"
-    private static let premiumFeedURLKey = "premiumFeedURL"
-    private static let defaultPremiumFeedURL = URL(string: "wss://blackphoenix.online/connection/websocket?cf_protocol=protobuf")!
+    private static let selectedCoinIDKey = "selectedCoinID"
     private static let priceAlertsKey = "priceAlerts"
     private static let canUseUserNotifications = Bundle.main.bundleURL.pathExtension == "app"
-    private static let allKnownCoins = CoinInfo.allTickSymbols + CoinInfo.exchangeSymbols + CoinInfo.premiumSymbols
 
     private static let priceFormatter: NumberFormatter = {
         let formatter = NumberFormatter()

@@ -15,7 +15,7 @@ struct PopoverView: View {
             )
 
             if viewModel.isShowingAPISettings {
-                FeedSettingsCard(viewModel: viewModel)
+                SettingsCard(viewModel: viewModel)
             }
 
             CoinSelectorCard(viewModel: viewModel)

@@ -10,17 +10,30 @@ struct TickerViewModelTests {
         resetTickerPreferences()
         let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider())
 
-        #expect(viewModel.statusTitle == "USD/JPY --")
+        #expect(viewModel.statusTitle == "BTC/USDT --")
     }
 
     @MainActor
-    @Test("defaults to USDJPY")
-    func defaultsToUsdJpy() {
+    @Test("defaults to BTCUSDT on Hyperliquid")
+    func defaultsToBtcUsdt() {
         resetTickerPreferences()
         let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider())
 
-        #expect(viewModel.selectedCoin.id == "USDJPY")
-        #expect(viewModel.feedMode == .standard)
+        #expect(viewModel.selectedCoin.id == "BTCUSDT")
+        #expect(viewModel.coins == CoinInfo.supportedSymbols)
+        #expect(viewModel.feedSourceLabel == "Hyperliquid")
+    }
+
+    @MainActor
+    @Test("connects to the public feed without any credentials")
+    func connectsWithoutCredentials() async {
+        resetTickerPreferences()
+        let provider = RecordingTickerStreamProvider()
+        let viewModel = TickerViewModel(streamProvider: provider)
+
+        viewModel.start()
+
+        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTCUSDT"] })
     }
 
     @MainActor
@@ -28,103 +41,32 @@ struct TickerViewModelTests {
     func switchesWebSocketSubscriptionsOneAtATime() async {
         resetTickerPreferences()
         let provider = RecordingTickerStreamProvider()
-        let viewModel = TickerViewModel(
-            streamProvider: provider,
-            tokenStore: MockTokenStore(token: "test-token")
-        )
+        let viewModel = TickerViewModel(streamProvider: provider)
 
         viewModel.start()
-        #expect(await waitUntil { provider.snapshot.startedSymbols.count == 1 })
-
-        viewModel.selectCoin(CoinInfo.allTickSymbols[1])
-        #expect(await waitUntil { provider.snapshot.startedSymbols.count == 2 })
-        #expect(provider.snapshot.maxActiveStreams == 1)
-        #expect(provider.snapshot.startedSymbols == ["USDJPY", "GOLD"])
-        #expect(provider.snapshot.terminatedSymbols == ["USDJPY"])
-    }
-
-    @MainActor
-    @Test("premium mode loads the premium catalog")
-    func premiumModeLoadsThePremiumCatalog() {
-        resetTickerPreferences()
-        UserDefaults.standard.set("premium", forKey: "feedMode")
-        UserDefaults.standard.set("BTCUSDT", forKey: "selectedPremiumCoinID")
-
-        let viewModel = TickerViewModel(streamProvider: MockTickerStreamProvider())
-
-        #expect(viewModel.feedMode == .premium)
-        #expect(viewModel.coins == CoinInfo.premiumSymbols)
-        #expect(viewModel.selectedCoin.id == "BTCUSDT")
-    }
-
-    @MainActor
-    @Test("standard and premium streams are mutually exclusive")
-    func standardAndPremiumStreamsAreMutuallyExclusive() async {
-        resetTickerPreferences()
-        let standardProvider = RecordingTickerStreamProvider()
-        let premiumProvider = RecordingTickerStreamProvider()
-        let viewModel = TickerViewModel(
-            streamProvider: standardProvider,
-            premiumStreamProviderFactory: { _ in premiumProvider },
-            tokenStore: MockTokenStore(token: "standard-token"),
-            premiumTokenStore: MockPremiumTokenStore(token: "premium-token")
-        )
-
-        viewModel.start()
-        #expect(await waitUntil { standardProvider.snapshot.startedSymbols == ["USDJPY"] })
-
-        viewModel.selectFeedMode(.premium)
-        #expect(await waitUntil { premiumProvider.snapshot.startedSymbols == ["BTCUSDT"] })
-        #expect(standardProvider.snapshot.terminatedSymbols == ["USDJPY"])
-        #expect(standardProvider.snapshot.maxActiveStreams == 1)
-        #expect(premiumProvider.snapshot.maxActiveStreams == 1)
-    }
-
-    @MainActor
-    @Test("switching standard provider loads public crypto and connects without API key")
-    func switchingStandardProviderLoadsPublicCryptoAndConnectsWithoutApiKey() async {
-        resetTickerPreferences()
-        let provider = RecordingTickerStreamProvider()
-        let viewModel = TickerViewModel(
-            streamProvider: provider,
-            tokenStore: MockTokenStore(token: nil)
-        )
-
-        viewModel.start()
-        #expect(provider.snapshot.startedSymbols.isEmpty)
-
-        viewModel.selectStandardFeedProvider(.binance)
-
-        #expect(viewModel.standardFeedProvider == .binance)
-        #expect(viewModel.coins == CoinInfo.exchangeSymbols)
-        #expect(viewModel.selectedCoin.id == "BTCUSDT")
         #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTCUSDT"] })
+
+        viewModel.selectCoin(CoinInfo.ethereum)
+        #expect(await waitUntil { provider.snapshot.startedSymbols == ["BTCUSDT", "ETHUSDT"] })
+        #expect(provider.snapshot.maxActiveStreams == 1)
+        #expect(provider.snapshot.terminatedSymbols == ["BTCUSDT"])
     }
 }
 
 private func resetTickerPreferences() {
-    let keys = [
-        "feedMode",
-        "standardFeedProvider",
-        "selectedCoinID",
-        "selectedStandardCoinID",
-        "selectedPremiumCoinID",
-        "premiumFeedURL"
-    ] + StandardFeedProvider.allCases.map { "selectedStandardCoinID.\($0.rawValue)" }
-
-    for key in keys {
+    for key in ["selectedCoinID", "priceAlerts", "showChangeInBar"] {
         UserDefaults.standard.removeObject(forKey: key)
     }
 }
 
 struct MockTickerStreamProvider: TickerStreamProvider {
-    func streamTicker(token: String, symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
+    func streamTicker(symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield(BTCTicker(
                 id: symbol,
-                symbol: "USD/JPY",
-                name: "US Dollar / Japanese Yen",
-                nameid: "usd-jpy",
+                symbol: "BTC/USDT",
+                name: "Bitcoin/Tether",
+                nameid: "bitcoin-tether",
                 rank: 1,
                 date: Date(),
                 price: 100,
@@ -136,30 +78,6 @@ struct MockTickerStreamProvider: TickerStreamProvider {
             continuation.finish()
         }
     }
-}
-
-struct MockTokenStore: AllTickTokenStoring {
-    let token: String?
-
-    func readToken() -> String? {
-        token
-    }
-
-    func saveToken(_ token: String) throws {}
-
-    func deleteToken() throws {}
-}
-
-struct MockPremiumTokenStore: PremiumUserTokenStoring {
-    let token: String?
-
-    func readToken() -> String? {
-        token
-    }
-
-    func saveToken(_ token: String) throws {}
-
-    func deleteToken() throws {}
 }
 
 final class RecordingTickerStreamProvider: TickerStreamProvider, @unchecked Sendable {
@@ -180,7 +98,7 @@ final class RecordingTickerStreamProvider: TickerStreamProvider, @unchecked Send
         )
     }
 
-    func streamTicker(token: String, symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
+    func streamTicker(symbol: String) -> AsyncThrowingStream<BTCTicker, Error> {
         lock.lock()
         activeStreams += 1
         maxActiveStreams = max(maxActiveStreams, activeStreams)
